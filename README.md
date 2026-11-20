@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 2 — backend foundation.** The API runs with a `/health` endpoint.
+> Status: **Milestone 3 — frontend foundation.** API (`/health`) plus a Next.js UI shell that talks to it.
 
 ## What it will do
 
@@ -65,7 +65,18 @@ npm run build && npm start   # compiled production-style run
 
 Check it: `curl localhost:4000/health`
 
-Frontend and Docker run instructions come with Milestones 3 and 4.
+### Frontend (Next.js)
+
+```bash
+cd frontend
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:4000
+npm install
+npm run dev                  # http://localhost:3000
+```
+
+With both running, the header should show a green **API online** indicator.
+
+Docker run instructions come with Milestone 4.
 
 ## Documentation
 
@@ -77,7 +88,7 @@ Frontend and Docker run instructions come with Milestones 3 and 4.
 
 1. ✅ Repository and project setup
 2. ✅ Backend foundation (Fastify)
-3. Frontend foundation (Next.js)
+3. ✅ Frontend foundation (Next.js)
 4. Docker Compose, PostgreSQL, Redis
 5. Document ingestion and chunking
 6. Embeddings and vector storage

@@ -34,6 +34,10 @@ Backend: Node 24, TypeScript, Fastify, Zod. Frontend: Next.js App Router, Tailwi
 Data: PostgreSQL + pgvector (HNSW) + FTS, Redis. AI: OpenAI `text-embedding-3-small`,
 OpenAI/Claude chat, Ollama for local comparison, LangChain.js, LangGraph.js, MCP TS SDK (stdio).
 
+## Frontend note
+`frontend/` uses Next.js 16 with Cache Components. Before writing Next.js code, read the bundled
+docs in `frontend/node_modules/next/dist/docs/` (see `frontend/AGENTS.md`). APIs differ from older versions.
+
 ## Git
 - Work directly on `main` (the developer's preference, no feature branches). Small, focused commits with descriptive messages.
 - Only commit when the developer asks. Never commit `.env` or secrets.
