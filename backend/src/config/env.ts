@@ -1,0 +1,34 @@
+import { z } from 'zod';
+
+/**
+ * Every environment variable the backend reads, validated once at startup.
+ *
+ * Why: process.env values are all `string | undefined`. Without validation, a typo in
+ * .env only shows up later as a confusing runtime error (e.g. "connect ECONNREFUSED"
+ * minutes after boot). With this schema the app refuses to start and says exactly
+ * which variable is wrong.
+ *
+ * New variables are added here as milestones need them (DATABASE_URL in M4, keys in M6...).
+ */
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  API_HOST: z.string().default('0.0.0.0'),
+  // z.coerce turns the string "4000" into the number 4000.
+  API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+});
+
+export type Env = z.infer<typeof envSchema>;
+
+/** Pure function so tests can pass a fake env instead of mutating process.env. */
+export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
+  const result = envSchema.safeParse(source);
+  if (!result.success) {
+    // Print variable names and problems, never values (values may be secrets).
+    const issues = result.error.issues
+      .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
+      .join('\n');
+    throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
+  return result.data;
+}
