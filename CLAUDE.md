@@ -35,6 +35,6 @@ Data: PostgreSQL + pgvector (HNSW) + FTS, Redis. AI: OpenAI `text-embedding-3-sm
 OpenAI/Claude chat, Ollama for local comparison, LangChain.js, LangGraph.js, MCP TS SDK (stdio).
 
 ## Git
-- Small, focused commits with descriptive messages. Feature branches for milestones (`m2-backend-foundation`, …).
+- Work directly on `main` (the developer's preference, no feature branches). Small, focused commits with descriptive messages.
 - Only commit when the developer asks. Never commit `.env` or secrets.
 - Keep README, ADRs and learning notes updated as part of each milestone.
