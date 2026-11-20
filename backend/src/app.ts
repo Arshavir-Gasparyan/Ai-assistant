@@ -1,3 +1,4 @@
+import cors from '@fastify/cors';
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import {
   serializerCompiler,
@@ -35,6 +36,14 @@ export function buildApp(env: Env) {
   // Teach Fastify to use Zod schemas for validating requests and serializing responses.
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+
+  // CORS: the browser blocks JS on http://localhost:3000 from reading responses from
+  // http://localhost:4000 (a different origin) unless the API explicitly allows it.
+  // We allow-list exact origins. Never use `origin: true` / "*" for an API like this.
+  app.register(cors, {
+    origin: env.CORS_ORIGINS,
+    methods: ['GET', 'POST', 'DELETE'],
+  });
 
   registerErrorHandlers(app);
   app.register(healthRoutes);

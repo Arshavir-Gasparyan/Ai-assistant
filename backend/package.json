@@ -15,6 +15,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@fastify/cors": "^11.4.3",
     "fastify": "^5.12.8",
     "fastify-type-provider-zod": "^7.0.0",
     "zod": "^4.6.7"

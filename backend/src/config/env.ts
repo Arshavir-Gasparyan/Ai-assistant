@@ -16,6 +16,16 @@ const envSchema = z.object({
   // z.coerce turns the string "4000" into the number 4000.
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // Browser origins allowed to call the API (comma-separated). The Next.js dev server by default.
+  CORS_ORIGINS: z
+    .string()
+    .default('http://localhost:3000')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    ),
 });
 
 export type Env = z.infer<typeof envSchema>;

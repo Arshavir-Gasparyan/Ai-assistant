@@ -16,3 +16,12 @@ describe('loadEnv', () => {
     expect(() => loadEnv({ NODE_ENV: 'staging' })).toThrow(/NODE_ENV/);
   });
 });
+
+describe('loadEnv CORS_ORIGINS', () => {
+  it('splits a comma-separated list and trims whitespace', () => {
+    expect(loadEnv({ CORS_ORIGINS: 'http://a.test, http://b.test' }).CORS_ORIGINS).toEqual([
+      'http://a.test',
+      'http://b.test',
+    ]);
+  });
+});
