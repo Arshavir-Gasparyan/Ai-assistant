@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 1 — repository setup.** Nothing is runnable yet.
+> Status: **Milestone 2 — backend foundation.** The API runs with a `/health` endpoint.
 
 ## What it will do
 
@@ -52,7 +52,20 @@ nvm use
 cp .env.example .env   # then fill in values as milestones require them
 ```
 
-Run instructions are added once each package exists (Milestones 2 to 4).
+### Backend (Fastify API)
+
+```bash
+cd backend
+npm install
+npm run dev        # http://localhost:4000, reloads on change, reads ../.env if present
+npm test           # unit tests (Vitest)
+npm run typecheck
+npm run build && npm start   # compiled production-style run
+```
+
+Check it: `curl localhost:4000/health`
+
+Frontend and Docker run instructions come with Milestones 3 and 4.
 
 ## Documentation
 
@@ -63,7 +76,7 @@ Run instructions are added once each package exists (Milestones 2 to 4).
 ## Roadmap
 
 1. ✅ Repository and project setup
-2. Backend foundation (Fastify)
+2. ✅ Backend foundation (Fastify)
 3. Frontend foundation (Next.js)
 4. Docker Compose, PostgreSQL, Redis
 5. Document ingestion and chunking
