@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 4 — infrastructure.** Docker Compose runs PostgreSQL + pgvector, Redis, migrations and the API.
+> Status: **Milestone 5 — document ingestion (in progress).** Upload PDF/Markdown via the API: text is extracted, chunked and stored. Upload UI next.
 
 ## What it will do
 
@@ -95,12 +95,15 @@ docker compose down -v                          # stop AND delete all data
 ### Tests
 
 ```bash
-cd backend && npm test      # unit tests, no Docker needed (dependencies are faked)
+cd backend
+npm test                    # unit tests, no Docker needed (dependencies are faked)
+npm run test:integration    # against real Postgres (needs: docker compose up -d postgres)
 ```
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [API reference](docs/api.md)
 - [Architecture Decision Records](docs/adr/)
 - [Learning notes](docs/learning-notes/)
 

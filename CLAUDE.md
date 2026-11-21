@@ -29,6 +29,7 @@ It moves to AWS later, so avoid choices that only work on a laptop.
 - Prompt templates live in `prompts/` and are versioned.
 - The assistant must refuse when the retrieved context does not contain the answer.
 - `/health` = liveness (never checks dependencies); `/ready` = readiness (Postgres + Redis).
+- Unit tests (`npm test`) fake dependencies; SQL behaviour is covered by integration tests (`npm run test:integration`, separate `knowledge_test` DB).
 - Schema changes only via new files in `backend/migrations/` (never edit an applied one).
 - `backend/.npmrc` and `frontend/.npmrc` force `legacy-peer-deps=false`. The developer's global npmrc sets it to true, so keep these files.
 
