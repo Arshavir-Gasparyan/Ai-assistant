@@ -10,7 +10,7 @@ import { z } from 'zod';
  *
  * New variables are added here as milestones need them (DATABASE_URL in M4, keys in M6...).
  */
-const envSchema = z.object({
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   API_HOST: z.string().default('0.0.0.0'),
   // z.coerce turns the string "4000" into the number 4000.
@@ -26,6 +26,10 @@ const envSchema = z.object({
         .map((origin) => origin.trim())
         .filter(Boolean),
     ),
+  // Required, no defaults: the app can't do anything useful without them, so fail at boot.
+  // Locally: localhost:5433 (see .env.example). In Docker: the service name, e.g. postgres:5432.
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  REDIS_URL: z.url({ protocol: /^rediss?$/ }),
 });
 
 export type Env = z.infer<typeof envSchema>;

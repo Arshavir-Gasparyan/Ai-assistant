@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildApp, type App } from '../src/app.js';
-import { loadEnv } from '../src/config/env.js';
+import { fakeDeps, testEnv } from './helpers.js';
 
 describe('app', () => {
   let app: App;
 
   beforeAll(async () => {
-    app = buildApp(loadEnv({ NODE_ENV: 'test', LOG_LEVEL: 'silent' }));
+    app = buildApp(testEnv(), fakeDeps());
 
     // A throwaway route that exists only in this test, to exercise validation and
     // error handling before we have real endpoints like POST /search.

@@ -1,13 +1,25 @@
 import cors from '@fastify/cors';
-import Fastify, { type FastifyServerOptions } from 'fastify';
+import Fastify, { type FastifyBaseLogger } from 'fastify';
 import {
   serializerCompiler,
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import type { Env } from './config/env.js';
+import type { Db } from './db/pool.js';
 import { registerErrorHandlers } from './plugins/error-handler.js';
+import type { Redis } from './redis/client.js';
 import { healthRoutes } from './routes/health.js';
+
+/**
+ * External resources the app needs, created OUTSIDE and passed in (dependency injection).
+ * server.ts passes real connections; tests pass fakes, so unit tests need no Docker.
+ */
+export interface AppDeps {
+  log: FastifyBaseLogger;
+  db: Db;
+  redis: Redis;
+}
 
 /**
  * Builds the Fastify app WITHOUT starting to listen.
@@ -16,19 +28,9 @@ import { healthRoutes } from './routes/health.js';
  * tests call buildApp() and use app.inject() to send fake HTTP requests in-memory.
  * No port is opened, so tests stay fast and can run in parallel.
  */
-export function buildApp(env: Env) {
-  const logger: FastifyServerOptions['logger'] = {
-    level: env.LOG_LEVEL,
-    // Never log credentials. More paths get added once we handle API keys and user data.
-    redact: ['req.headers.authorization', 'req.headers.cookie'],
-    // Human-readable logs in dev; raw JSON elsewhere (log tools parse JSON).
-    ...(env.NODE_ENV === 'development' && {
-      transport: { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss' } },
-    }),
-  };
-
+export function buildApp(env: Env, deps: AppDeps) {
   const app = Fastify({
-    logger,
+    loggerInstance: deps.log,
     // Default body limit for JSON. File uploads (M5) get their own explicit limit.
     bodyLimit: 1024 * 1024, // 1 MB
   }).withTypeProvider<ZodTypeProvider>();
@@ -46,7 +48,12 @@ export function buildApp(env: Env) {
   });
 
   registerErrorHandlers(app);
-  app.register(healthRoutes);
+  app.register(healthRoutes, {
+    checks: {
+      postgres: () => deps.db.query('SELECT 1'),
+      redis: () => deps.redis.ping(),
+    },
+  });
 
   return app;
 }

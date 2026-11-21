@@ -1,14 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../src/app.js';
-import { loadEnv } from '../src/config/env.js';
+import { fakeDeps, testEnv } from './helpers.js';
 
 describe('CORS', () => {
   let app: App;
 
   beforeAll(async () => {
-    app = buildApp(
-      loadEnv({ NODE_ENV: 'test', LOG_LEVEL: 'silent', CORS_ORIGINS: 'http://localhost:3000' }),
-    );
+    app = buildApp(testEnv({ CORS_ORIGINS: 'http://localhost:3000' }), fakeDeps());
     await app.ready();
   });
 
