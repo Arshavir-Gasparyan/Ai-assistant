@@ -26,6 +26,8 @@ export const envSchema = z.object({
         .map((origin) => origin.trim())
         .filter(Boolean),
     ),
+  // Maximum upload size. Larger files are rejected with 413 before they're fully read.
+  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024), // 10 MB
   // Required, no defaults: the app can't do anything useful without them, so fail at boot.
   // Locally: localhost:5433 (see .env.example). In Docker: the service name, e.g. postgres:5432.
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),

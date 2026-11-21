@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import Fastify, { type FastifyBaseLogger } from 'fastify';
 import {
   serializerCompiler,
@@ -7,6 +8,7 @@ import {
 } from 'fastify-type-provider-zod';
 import type { Env } from './config/env.js';
 import type { Db } from './db/pool.js';
+import { documentRoutes } from './documents/routes.js';
 import { registerErrorHandlers } from './plugins/error-handler.js';
 import type { Redis } from './redis/client.js';
 import { healthRoutes } from './routes/health.js';
@@ -47,6 +49,12 @@ export function buildApp(env: Env, deps: AppDeps) {
     methods: ['GET', 'POST', 'DELETE'],
   });
 
+  // File uploads (multipart/form-data). The JSON bodyLimit above does not apply to these.
+  // Limits are enforced while streaming, so an oversized upload is rejected early.
+  app.register(multipart, {
+    limits: { fileSize: env.MAX_UPLOAD_BYTES, files: 1, fields: 5, parts: 6 },
+  });
+
   registerErrorHandlers(app);
   app.register(healthRoutes, {
     checks: {
@@ -54,6 +62,7 @@ export function buildApp(env: Env, deps: AppDeps) {
       redis: () => deps.redis.ping(),
     },
   });
+  app.register(documentRoutes, { db: deps.db });
 
   return app;
 }
