@@ -26,6 +26,29 @@ flowchart LR
 | MCP server | Exposes `search_documents` and `ask_question` tools to Claude over stdio. |
 | Evaluation | Golden Q&A set, retrieval hit rate, faithfulness, cost/latency reports. |
 
+## Runtime (Docker Compose)
+
+```mermaid
+flowchart LR
+  subgraph compose[docker compose network]
+    PG[(postgres:5432<br/>pgvector 0.8, PG 18)]
+    RD[(redis:6379)]
+    MG[migrate<br/>one-shot job] --> PG
+    API[api:4000] --> PG
+    API --> RD
+  end
+  Mac[Your machine] -- localhost:4000 --> API
+  Mac -- localhost:5433 --> PG
+  Mac -- localhost:6379 --> RD
+```
+
+Startup order: `postgres` healthy → `migrate` exits 0 → `api` starts (also waits for `redis` healthy).
+
+| Endpoint | Question it answers | Checks deps? | On failure |
+|---|---|---|---|
+| `GET /health` | Is the process alive? | No | Orchestrator restarts the container |
+| `GET /ready` | Can it serve traffic now? | Postgres + Redis (2s timeout each) | Load balancer stops routing to it |
+
 ## Two core flows (filled in at Milestones 5 to 9)
 
 1. **Ingestion:** file → extract text → chunk → embed → store.

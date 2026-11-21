@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 3 — frontend foundation.** API (`/health`) plus a Next.js UI shell that talks to it.
+> Status: **Milestone 4 — infrastructure.** Docker Compose runs PostgreSQL + pgvector, Redis, migrations and the API.
 
 ## What it will do
 
@@ -24,7 +24,7 @@ ai-knowledge-assistant/
 ├── documents/      Sample documents used for demos and evaluation
 ├── prompts/        Versioned prompt templates
 ├── docs/           Architecture, ADRs, learning notes
-├── docker-compose.yml   (Milestone 4)
+├── docker-compose.yml   Postgres + pgvector, Redis, migrate job, API
 ├── .env.example
 └── CLAUDE.md       Working rules for Claude Code in this repo
 ```
@@ -49,34 +49,54 @@ nvm use
 ## Setup
 
 ```bash
-cp .env.example .env   # then fill in values as milestones require them
+cp .env.example .env                     # local defaults work out of the box
+cp frontend/.env.example frontend/.env.local
 ```
 
-### Backend (Fastify API)
+### Option A: everything in Docker (closest to production)
 
 ```bash
+docker compose up -d --build     # postgres, redis, migrate (one-shot), api
+docker compose ps                # api/postgres/redis "healthy", migrate "exited (0)"
+curl localhost:4000/health       # liveness:  is the process up?
+curl localhost:4000/ready        # readiness: are Postgres and Redis reachable?
+
+cd frontend && npm install && npm run dev   # http://localhost:3000
+```
+
+### Option B: infrastructure in Docker, API on your machine (hot reload)
+
+```bash
+docker compose up -d postgres redis
 cd backend
 npm install
-npm run dev        # http://localhost:4000, reloads on change, reads ../.env if present
-npm test           # unit tests (Vitest)
-npm run typecheck
-npm run build && npm start   # compiled production-style run
+npm run migrate                  # apply SQL migrations to localhost:5433
+npm run dev                      # http://localhost:4000
 ```
 
-Check it: `curl localhost:4000/health`
+Only one API can use port 4000: run `docker compose stop api` before `npm run dev`.
 
-### Frontend (Next.js)
+### Useful commands
 
 ```bash
-cd frontend
-cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:4000
-npm install
-npm run dev                  # http://localhost:3000
+docker compose logs -f api                      # follow API logs
+docker compose exec postgres psql -U assistant -d knowledge   # SQL shell
+docker compose exec redis redis-cli             # Redis shell
+docker compose down                             # stop (data is kept in volumes)
+docker compose down -v                          # stop AND delete all data
 ```
 
-With both running, the header should show a green **API online** indicator.
+| Service | Host port | Notes |
+|---|---|---|
+| API | 4000 | `/health`, `/ready` |
+| PostgreSQL | **5433** | 5433, not 5432, to avoid clashing with a local Postgres |
+| Redis | 6379 | append-only persistence |
 
-Docker run instructions come with Milestone 4.
+### Tests
+
+```bash
+cd backend && npm test      # unit tests, no Docker needed (dependencies are faked)
+```
 
 ## Documentation
 
@@ -89,7 +109,7 @@ Docker run instructions come with Milestone 4.
 1. ✅ Repository and project setup
 2. ✅ Backend foundation (Fastify)
 3. ✅ Frontend foundation (Next.js)
-4. Docker Compose, PostgreSQL, Redis
+4. ✅ Docker Compose, PostgreSQL, Redis
 5. Document ingestion and chunking
 6. Embeddings and vector storage
 7. Hybrid search

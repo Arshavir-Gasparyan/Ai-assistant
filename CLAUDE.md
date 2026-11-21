@@ -28,6 +28,9 @@ It moves to AWS later, so avoid choices that only work on a laptop.
   API keys, PII, or raw document content.
 - Prompt templates live in `prompts/` and are versioned.
 - The assistant must refuse when the retrieved context does not contain the answer.
+- `/health` = liveness (never checks dependencies); `/ready` = readiness (Postgres + Redis).
+- Schema changes only via new files in `backend/migrations/` (never edit an applied one).
+- `backend/.npmrc` and `frontend/.npmrc` force `legacy-peer-deps=false`. The developer's global npmrc sets it to true, so keep these files.
 
 ## Stack
 Backend: Node 24, TypeScript, Fastify, Zod. Frontend: Next.js App Router, Tailwind.
