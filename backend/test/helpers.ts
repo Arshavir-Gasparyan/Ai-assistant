@@ -1,6 +1,7 @@
 import type { AppDeps } from '../src/app.js';
 import { loadEnv } from '../src/config/env.js';
 import { createFakeEmbedder } from '../src/embeddings/fake-embedder.js';
+import { createFakeChatModel } from '../src/llm/fake-chat.js';
 import { createLogger } from '../src/logger.js';
 
 export function testEnv(overrides: Record<string, string> = {}) {
@@ -35,5 +36,6 @@ export function fakeDeps(opts: { dbDown?: boolean; redisDown?: boolean } = {}): 
     db: db as unknown as AppDeps['db'],
     redis: redis as unknown as AppDeps['redis'],
     embedder: createFakeEmbedder(),
+    chatModel: createFakeChatModel(),
   };
 }
