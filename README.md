@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 10 — conversation memory.** Follow-up questions work: conversations are stored in Redis (sliding window + summary), follow-ups are rewritten into standalone questions before search, and token budgets cap prompt size and spending. The web UI has a Dashboard, Search and a streaming Assistant.
+> Status: **Milestone 13 — MCP server.** Claude Desktop / Claude Code can search the documents and ask cited questions through the MCP tools `search_documents` and `ask_question` (stdio). Also done: hybrid search, RAG chat with citations, SSE streaming, Redis conversation memory, and a web UI (Dashboard, Search, Assistant).
 
 ## What it will do
 
@@ -18,8 +18,9 @@ with **grounded answers and citations**, built on Retrieval-Augmented Generation
 
 ```
 ai-knowledge-assistant/
-├── backend/        Fastify + TypeScript API (ingestion, retrieval, RAG, MCP)
+├── backend/        Fastify + TypeScript API (ingestion, retrieval, RAG, memory)
 ├── frontend/       Next.js (App Router) + Tailwind UI
+├── mcp-server/     MCP server (stdio) exposing search_documents + ask_question
 ├── evaluation/     Golden dataset + evaluation scripts
 ├── documents/      Sample documents used for demos and evaluation
 ├── prompts/        Versioned prompt templates
@@ -29,7 +30,7 @@ ai-knowledge-assistant/
 └── CLAUDE.md       Working rules for Claude Code in this repo
 ```
 
-`frontend/` and `backend/` are **independent packages**, each with its own
+`frontend/`, `backend/` and `mcp-server/` are **independent packages**, each with its own
 `package.json` and lockfile. They talk only over HTTP and SSE. See
 [ADR-0001](docs/adr/0001-monorepo-structure.md).
 
@@ -136,12 +137,23 @@ curl -N localhost:4000/chat/stream -H 'content-type: application/json' \
   -d '{"question":"How many vacation days can I carry over?"}'
 ```
 
+### Use it from Claude (MCP)
+
+```bash
+cd mcp-server && npm install && npm run build
+claude mcp add knowledge-assistant -e KNOWLEDGE_API_URL=http://localhost:4000 \
+  -- node "$PWD/dist/index.js"
+```
+
+Claude Desktop setup, the MCP Inspector and details: [mcp-server/README.md](mcp-server/README.md).
+
 ### Tests
 
 ```bash
 cd backend
 npm test                    # unit tests, no Docker needed (dependencies are faked)
-npm run test:integration    # against real Postgres (needs: docker compose up -d postgres)
+npm run test:integration    # against real Postgres + Redis (needs: docker compose up -d postgres redis)
+cd ../mcp-server && npm test  # MCP tools over the real protocol, including a real stdio child process
 ```
 
 ## Documentation
@@ -165,7 +177,7 @@ npm run test:integration    # against real Postgres (needs: docker compose up -d
 10. ✅ Redis conversation memory and token budgets
 11. LangChain vs. handwritten RAG
 12. LangGraph workflow and human-in-the-loop
-13. MCP server and Claude integration
+13. ✅ MCP server and Claude integration
 14. AI agent with tool-call limits
 15. LangSmith tracing and evaluation
 16. Testing, documentation, final demo

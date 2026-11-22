@@ -46,3 +46,14 @@ Suggested format per note:
 - **Token budgets:** a prompt budget (what fits in one request) and a spending budget (what one
   conversation may cost). Estimate with chars/4 and measure with the provider's `usage`.
 - **Redis TTL as a retention policy:** conversation text may contain personal data, so it expires.
+
+## MCP (Milestone 13)
+
+- **MCP** standardizes how AI apps call external tools: build a server once, use it from any MCP client.
+- **stdio transport:** the client spawns the server and exchanges JSON-RPC over stdin/stdout, so **stdout is
+  sacred**. One `console.log` breaks the connection. Log to stderr.
+- A tool = name + description (the client model reads it to decide WHEN to call it) + input schema +
+  optional output schema (`structuredContent`) + annotations (`readOnlyHint`…, hints only).
+- Return failures as `isError: true` results so the model can react. Thrown errors are protocol failures.
+- **Indirect prompt injection:** tool results flow into another model's context. Document text can
+  carry instructions, so treat it as data and say so in tool descriptions.
