@@ -36,6 +36,10 @@ export const envSchema = z.object({
   CHAT_PROVIDER: z.enum(['openai', 'fake']).default('openai'),
   // Any OpenAI chat model name. Pricing for cost logs lives in src/llm/usage.ts.
   CHAT_MODEL: z.string().min(1).default('gpt-4.1-mini'),
+  // Conversation memory (Milestone 10). Conversations expire after this much inactivity.
+  MEMORY_TTL_SECONDS: z.coerce.number().int().positive().default(24 * 60 * 60),
+  // Spending cap per conversation, in LLM tokens (input + output). 429 when reached.
+  CONVERSATION_TOKEN_BUDGET: z.coerce.number().int().positive().default(100_000),
   OPENAI_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(20).optional()),
   // Required, no defaults: the app can't do anything useful without them, so fail at boot.
   // Locally: localhost:5433 (see .env.example). In Docker: the service name, e.g. postgres:5432.

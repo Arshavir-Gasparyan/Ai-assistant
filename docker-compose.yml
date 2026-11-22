@@ -79,6 +79,9 @@ services:
       # Chat (Milestone 8). Same key. Empty key = /chat returns 503.
       CHAT_PROVIDER: ${CHAT_PROVIDER:-openai}
       CHAT_MODEL: ${CHAT_MODEL:-gpt-4.1-mini}
+      # Conversation memory (Milestone 10), stored in Redis.
+      MEMORY_TTL_SECONDS: ${MEMORY_TTL_SECONDS:-86400}
+      CONVERSATION_TOKEN_BUDGET: ${CONVERSATION_TOKEN_BUDGET:-100000}
     ports:
       - "127.0.0.1:${API_PORT:-4000}:4000"
     depends_on:

@@ -12,7 +12,9 @@ const words = (s: string) =>
  * It is NOT intelligent: it picks the source sharing the most words with the question
  * and returns that source's first sentence with a citation. No shared words = refuse.
  *
- * It reads the <source>/<question> tags of the RAG prompt, so it only works with that prompt.
+ * It reads the tags of OUR prompts, so it only works with them. It picks its behaviour by
+ * `schemaName`: rag_answer (above), condense_question (a short follow-up is glued onto the
+ * previous question), conversation_summary (lists the user's questions).
  *
  * Streaming: it sends its JSON in small pieces, like a real model. `delayMs` between pieces
  * makes the streaming visible in the UI (0 in tests).
@@ -21,8 +23,23 @@ export function createFakeChatModel(model = 'fake-extractive-v1', delayMs = 0): 
   return {
     provider: 'fake',
     model,
-    async completeJson({ messages }, { onToken, signal } = {}) {
+    async completeJson({ messages, schemaName }, { onToken, signal } = {}) {
       const user = messages.find((m) => m.role === 'user')?.content ?? '';
+      const tokens = (out: unknown) => ({ inputTokens: Math.ceil(user.length / 4), outputTokens: Math.ceil(JSON.stringify(out).length / 4) });
+
+      if (schemaName === 'condense_question') {
+        const latest = /<latest_message>\n([\s\S]*?)\n<\/latest_message>/.exec(user)?.[1] ?? '';
+        const previous = [...user.matchAll(/<message role="user">\n([\s\S]*?)\n<\/message>/g)].at(-1)?.[1];
+        const isShortFollowUp = latest.split(/\s+/).length <= 7;
+        const json = { standaloneQuestion: previous && isShortFollowUp ? `${previous} ${latest}` : latest };
+        return { json, usage: tokens(json) };
+      }
+      if (schemaName === 'conversation_summary') {
+        const questions = [...user.matchAll(/<message role="user">\n([\s\S]*?)\n<\/message>/g)].map((m) => m[1]);
+        const json = { summary: `The user asked: ${questions.join(' | ')}` };
+        return { json, usage: tokens(json) };
+      }
+
       const question = words(/<question>([\s\S]*?)<\/question>/.exec(user)?.[1] ?? '');
       // The opening tag ends at the newline (headings like "Leave > Vacation" contain ">").
       const sources = [...user.matchAll(/<source id="(\d+)"[^\n]*\n([\s\S]*?)\n<\/source>/g)].map((m) => ({

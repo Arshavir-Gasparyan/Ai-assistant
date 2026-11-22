@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { AppError } from '../errors.js';
 import type { ChatModel } from '../llm/chat-model.js';
+import { estimateTokens, fitToTokenBudget, SOURCE_TOKEN_BUDGET } from '../llm/budget.js';
 import { createJsonStringFieldStreamer } from '../llm/json-field-streamer.js';
 import { RAG_ANSWER, ragAnswerJsonSchema, ragAnswerSchema, type PromptVersion } from '../prompts/rag-answer.js';
 import type { SearchResponse, SearchResult } from '../search/search.js';
@@ -32,6 +33,8 @@ export interface ChatAnswer {
   promptVersion: string;
   retrieval: { modeUsed: SearchResponse['modeUsed']; sources: number };
   warnings: string[];
+  /** Tokens used by the answer call (0 when it was refused without calling the LLM). */
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 /** Streamed while the answer is generated. The final ChatAnswer is returned as usual. */
@@ -86,7 +89,9 @@ export async function answerQuestion(
   const started = performance.now();
 
   const retrieval = await retrieve(question, topK);
-  const sources = retrieval.results;
+  // Prompt budget: drop the lowest-ranked sources if together they are too long.
+  // With topK ≤ 10 and ~250-token chunks this rarely triggers. It's a safety net for long chunks.
+  const sources = fitToTokenBudget(retrieval.results, (s) => estimateTokens(s.content), SOURCE_TOKEN_BUDGET);
   stream?.onEvent({
     type: 'meta',
     model: chatModel.model,
@@ -95,6 +100,7 @@ export async function answerQuestion(
     warnings: retrieval.warnings,
   });
 
+  let usage = { inputTokens: 0, outputTokens: 0 };
   const result = (fields: Pick<ChatAnswer, 'answer' | 'answerable' | 'refusalReason' | 'citations'>): ChatAnswer => {
     // The question and answer may contain personal data: log shape and outcome only.
     log.info(
@@ -117,6 +123,7 @@ export async function answerQuestion(
       promptVersion: prompt.id,
       retrieval: { modeUsed: retrieval.modeUsed, sources: sources.length },
       warnings: retrieval.warnings,
+      usage,
     };
   };
   const refuse = (refusalReason: RefusalReason) =>
@@ -127,7 +134,7 @@ export async function answerQuestion(
 
   // The model streams JSON; pull out the growing "answer" string and forward it.
   const answerStreamer = createJsonStringFieldStreamer('answer');
-  const { json } = await chatModel.completeJson(
+  const completion = await chatModel.completeJson(
     {
       messages: prompt.build(question, sources),
       schemaName: 'rag_answer',
@@ -142,6 +149,9 @@ export async function answerQuestion(
       },
     },
   );
+
+  const { json } = completion;
+  usage = completion.usage;
 
   // Structured outputs make the shape very likely, not guaranteed (other providers, fakes,
   // future schema drift), so validate like any other untrusted input.

@@ -11,6 +11,7 @@ import type { Db } from './db/pool.js';
 import { documentRoutes } from './documents/routes.js';
 import type { Embedder } from './embeddings/embedder.js';
 import type { ChatModel } from './llm/chat-model.js';
+import { createRedisConversationStore, type ConversationStore } from './memory/store.js';
 import { registerErrorHandlers } from './plugins/error-handler.js';
 import { chatRoutes } from './rag/routes.js';
 import type { Redis } from './redis/client.js';
@@ -27,6 +28,8 @@ export interface AppDeps {
   redis: Redis;
   embedder: Embedder;
   chatModel: ChatModel;
+  /** Defaults to Redis-backed memory. Unit tests pass an in-memory store. */
+  conversationStore?: ConversationStore;
 }
 
 /**
@@ -70,7 +73,13 @@ export function buildApp(env: Env, deps: AppDeps) {
   });
   app.register(documentRoutes, { db: deps.db, embedder: deps.embedder });
   app.register(searchRoutes, { db: deps.db, embedder: deps.embedder, log: deps.log });
-  app.register(chatRoutes, { db: deps.db, embedder: deps.embedder, chatModel: deps.chatModel });
+  app.register(chatRoutes, {
+    db: deps.db,
+    embedder: deps.embedder,
+    chatModel: deps.chatModel,
+    store: deps.conversationStore ?? createRedisConversationStore(deps.redis, env.MEMORY_TTL_SECONDS),
+    conversationTokenBudget: env.CONVERSATION_TOKEN_BUDGET,
+  });
 
   return app;
 }
