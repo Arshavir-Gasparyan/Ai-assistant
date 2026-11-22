@@ -3,8 +3,10 @@
  *
  * Every page goes through apiFetch() so that the base URL, JSON handling, and the
  * backend's error format ({ error: { code, message, details } }) are handled in one
- * spot. Streaming chat (SSE, Milestone 9) gets its own helper here later.
+ * spot. Streaming chat uses streamChat() below, built on readSse().
  */
+
+import { readSse } from './sse';
 
 // Inlined at build time by Next.js because of the NEXT_PUBLIC_ prefix.
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -138,3 +140,80 @@ export const searchChunks = (body: { query: string; mode: SearchMode; topK: numb
     body: JSON.stringify(body),
     signal,
   });
+
+// Chat (backend/src/rag/routes.ts).
+
+export interface Citation {
+  n: number;
+  chunkId: string;
+  documentId: string;
+  filename: string;
+  heading: string | null;
+  pageNumber: number | null;
+  snippet: string;
+}
+
+export type RefusalReason = 'no_sources' | 'not_in_sources' | 'no_valid_citations';
+
+export interface ChatMeta {
+  model: string;
+  promptVersion: string;
+  retrieval: { modeUsed: SearchMode; sources: number };
+  warnings: string[];
+}
+
+export interface ChatAnswer extends ChatMeta {
+  answer: string;
+  answerable: boolean;
+  refusalReason: RefusalReason | null;
+  citations: Citation[];
+}
+
+export interface ChatStreamHandlers {
+  onMeta: (meta: ChatMeta) => void;
+  /** A piece of the answer as it is generated: a preview, see onDone. */
+  onDelta: (text: string) => void;
+  /** The verified answer. Replaces the streamed preview (invalid citations removed). */
+  onDone: (answer: ChatAnswer) => void;
+}
+
+/**
+ * POST /chat/stream and dispatch its Server-Sent Events. Resolves when the stream ends.
+ * Throws ApiError for HTTP errors (e.g. 400), network failures, and `error` events.
+ * Abort with the signal: the backend notices the closed connection and stops the LLM call.
+ */
+export async function streamChat(
+  body: { question: string; topK?: number },
+  handlers: ChatStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    throw new ApiError(0, 'NETWORK_ERROR', `Cannot reach the API at ${API_URL}`);
+  }
+
+  // Errors before the stream started (validation) are normal JSON error responses.
+  if (!res.ok || !res.body) {
+    const errBody = (await res.json().catch(() => null)) as ApiErrorBody | null;
+    throw new ApiError(res.status, errBody?.error.code ?? 'HTTP_ERROR', errBody?.error.message ?? `Request failed with status ${res.status}`);
+  }
+
+  for await (const { event, data } of readSse(res.body)) {
+    const payload = JSON.parse(data);
+    if (event === 'meta') handlers.onMeta(payload as ChatMeta);
+    else if (event === 'delta') handlers.onDelta((payload as { text: string }).text);
+    else if (event === 'done') handlers.onDone(payload as ChatAnswer);
+    else if (event === 'error') {
+      const { code, message } = payload as { code: string; message: string };
+      throw new ApiError(200, code, message);
+    }
+  }
+}
