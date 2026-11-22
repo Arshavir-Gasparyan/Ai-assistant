@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { AppError } from '../errors.js';
 import type { ChatModel } from '../llm/chat-model.js';
+import { createJsonStringFieldStreamer } from '../llm/json-field-streamer.js';
 import { RAG_ANSWER, ragAnswerJsonSchema, ragAnswerSchema, type PromptVersion } from '../prompts/rag-answer.js';
 import type { SearchResponse, SearchResult } from '../search/search.js';
 import { resolveCitations } from './citations.js';
@@ -33,6 +34,16 @@ export interface ChatAnswer {
   warnings: string[];
 }
 
+/** Streamed while the answer is generated. The final ChatAnswer is returned as usual. */
+export type ChatStreamEvent =
+  | ({ type: 'meta' } & Pick<ChatAnswer, 'model' | 'promptVersion' | 'retrieval' | 'warnings'>)
+  | { type: 'delta'; text: string };
+
+export interface StreamOptions {
+  onEvent: (event: ChatStreamEvent) => void;
+  signal?: AbortSignal;
+}
+
 export interface RagDeps {
   /** Hybrid search, injected so unit tests can fake retrieval without a database. */
   retrieve: (question: string, topK: number) => Promise<SearchResponse>;
@@ -59,14 +70,30 @@ const toCitation = (n: number, s: SearchResult): Citation => ({
  *   3. Generate: the LLM returns JSON {answerable, answer, citations} (structured output).
  *   4. Verify:   validate the JSON, check citation numbers against the real sources, and
  *                refuse unless the answer is grounded in at least one of them.
+ *
+ * With `stream`, the caller also receives a `meta` event after retrieval and `delta` events
+ * with answer text as it is generated. Deltas are a PREVIEW: citations can only be checked
+ * once the answer is complete, so the returned ChatAnswer is the authoritative version.
  */
-export async function answerQuestion(deps: RagDeps, question: string, topK: number): Promise<ChatAnswer> {
+export async function answerQuestion(
+  deps: RagDeps,
+  question: string,
+  topK: number,
+  stream?: StreamOptions,
+): Promise<ChatAnswer> {
   const { retrieve, chatModel, log } = deps;
   const prompt = deps.prompt ?? RAG_ANSWER;
   const started = performance.now();
 
   const retrieval = await retrieve(question, topK);
   const sources = retrieval.results;
+  stream?.onEvent({
+    type: 'meta',
+    model: chatModel.model,
+    promptVersion: prompt.id,
+    retrieval: { modeUsed: retrieval.modeUsed, sources: sources.length },
+    warnings: retrieval.warnings,
+  });
 
   const result = (fields: Pick<ChatAnswer, 'answer' | 'answerable' | 'refusalReason' | 'citations'>): ChatAnswer => {
     // The question and answer may contain personal data: log shape and outcome only.
@@ -98,12 +125,23 @@ export async function answerQuestion(deps: RagDeps, question: string, topK: numb
   // Nothing retrieved: don't pay for an LLM call that can only say "I don't know".
   if (sources.length === 0) return refuse('no_sources');
 
-  const { json } = await chatModel.completeJson({
-    messages: prompt.build(question, sources),
-    schemaName: 'rag_answer',
-    jsonSchema: ragAnswerJsonSchema(),
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
-  });
+  // The model streams JSON; pull out the growing "answer" string and forward it.
+  const answerStreamer = createJsonStringFieldStreamer('answer');
+  const { json } = await chatModel.completeJson(
+    {
+      messages: prompt.build(question, sources),
+      schemaName: 'rag_answer',
+      jsonSchema: ragAnswerJsonSchema(),
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+    },
+    stream && {
+      signal: stream.signal,
+      onToken: (chunk) => {
+        const text = answerStreamer.push(chunk);
+        if (text) stream.onEvent({ type: 'delta', text });
+      },
+    },
+  );
 
   // Structured outputs make the shape very likely, not guaranteed (other providers, fakes,
   // future schema drift), so validate like any other untrusted input.

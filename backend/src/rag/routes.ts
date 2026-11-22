@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import type { FastifyBaseLogger } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { Db } from '../db/pool.js';
 import type { Embedder } from '../embeddings/embedder.js';
+import { AppError } from '../errors.js';
 import type { ChatModel } from '../llm/chat-model.js';
 import { search } from '../search/search.js';
-import { answerQuestion } from './answer.js';
+import { answerQuestion, type RagDeps } from './answer.js';
 
 export const chatBodySchema = z.object({
   // Input limit (guardrail): bounds prompt size and cost, and blocks pasting whole documents.
@@ -33,30 +35,86 @@ const chatResponseSchema = z.object({
   warnings: z.array(z.string()),
 });
 
+/** Keeps idle connections open through proxies/load balancers (AWS ALB idle timeout: 60s). */
+const HEARTBEAT_MS = 15_000;
+
 export const chatRoutes: FastifyPluginAsyncZod<{ db: Db; embedder: Embedder; chatModel: ChatModel }> = async (
   app,
   { db, embedder, chatModel },
 ) => {
+  const ragDeps = (log: FastifyBaseLogger): RagDeps => ({
+    retrieve: (q, k) => search({ db, embedder, log }, q, { topK: k, mode: 'hybrid' }),
+    chatModel,
+    log,
+  });
+
   /**
-   * POST /chat  { question, topK? }
+   * POST /chat  { question, topK? }  →  the complete answer as one JSON response.
    *   200 answer with citations, or a refusal (answerable: false) | 400 validation
    *   502 CHAT_FAILED / CHAT_INVALID_RESPONSE | 503 CHAT_NOT_CONFIGURED
-   * Streaming arrives in Milestone 9, conversation memory in Milestone 10.
    */
   app.post(
     '/chat',
     { schema: { body: chatBodySchema, response: { 200: chatResponseSchema } } },
-    async (request) => {
-      const { question, topK } = request.body;
-      return answerQuestion(
-        {
-          retrieve: (q, k) => search({ db, embedder, log: request.log }, q, { topK: k, mode: 'hybrid' }),
-          chatModel,
-          log: request.log,
-        },
-        question,
-        topK,
-      );
-    },
+    async (request) => answerQuestion(ragDeps(request.log), request.body.question, request.body.topK),
   );
+
+  /**
+   * POST /chat/stream  { question, topK? }  →  Server-Sent Events:
+   *
+   *   event: meta    data: {model, promptVersion, retrieval, warnings}   (after retrieval)
+   *   event: delta   data: {text}                                        (many, answer preview)
+   *   event: done    data: <same body as POST /chat>                     (authoritative)
+   *   event: error   data: {code, message}                               (instead of done)
+   *
+   * Validation errors (400) are normal JSON responses: they happen before the stream starts.
+   * After that the status is already 200, so failures arrive as an `error` event.
+   */
+  app.post('/chat/stream', { schema: { body: chatBodySchema } }, async (request, reply) => {
+    const { question, topK } = request.body;
+    const res = reply.raw;
+
+    // If the client disconnects (Stop button, closed tab), abort the LLM call:
+    // nobody will read the rest, so don't pay for it.
+    const controller = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) controller.abort();
+    });
+
+    // From here on we write the HTTP response ourselves. hijack() tells Fastify not to
+    // send anything, so headers set by plugins (CORS) must be copied over explicitly.
+    reply.hijack();
+    res.writeHead(200, {
+      ...(reply.getHeaders() as Record<string, string | number | string[]>),
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no', // tell nginx-style proxies not to buffer the stream
+    });
+
+    const send = (event: string, data: unknown) => {
+      if (!res.writableEnded && !res.destroyed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+    const heartbeat = setInterval(() => !res.destroyed && res.write(': ping\n\n'), HEARTBEAT_MS);
+
+    try {
+      const answer = await answerQuestion(ragDeps(request.log), question, topK, {
+        signal: controller.signal,
+        onEvent: ({ type, ...data }) => send(type, data),
+      });
+      send('done', answer);
+    } catch (err) {
+      if (controller.signal.aborted) {
+        request.log.info('Chat stream cancelled by client');
+      } else if (err instanceof AppError) {
+        send('error', { code: err.code, message: err.message });
+      } else {
+        request.log.error({ err }, 'Chat stream failed');
+        send('error', { code: 'INTERNAL_ERROR', message: 'Something went wrong' });
+      }
+    } finally {
+      clearInterval(heartbeat);
+      res.end();
+    }
+  });
 };

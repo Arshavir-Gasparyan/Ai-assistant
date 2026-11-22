@@ -1,3 +1,4 @@
+import { AppError } from '../errors.js';
 import type { ChatModel } from './chat-model.js';
 
 const STOPWORDS = new Set(
@@ -12,12 +13,15 @@ const words = (s: string) =>
  * and returns that source's first sentence with a citation. No shared words = refuse.
  *
  * It reads the <source>/<question> tags of the RAG prompt, so it only works with that prompt.
+ *
+ * Streaming: it sends its JSON in small pieces, like a real model. `delayMs` between pieces
+ * makes the streaming visible in the UI (0 in tests).
  */
-export function createFakeChatModel(model = 'fake-extractive-v1'): ChatModel {
+export function createFakeChatModel(model = 'fake-extractive-v1', delayMs = 0): ChatModel {
   return {
     provider: 'fake',
     model,
-    async completeJson({ messages }) {
+    async completeJson({ messages }, { onToken, signal } = {}) {
       const user = messages.find((m) => m.role === 'user')?.content ?? '';
       const question = words(/<question>([\s\S]*?)<\/question>/.exec(user)?.[1] ?? '');
       // The opening tag ends at the newline (headings like "Leave > Vacation" contain ">").
@@ -32,15 +36,23 @@ export function createFakeChatModel(model = 'fake-extractive-v1'): ChatModel {
         if (overlap > 0 && (!best || overlap > best.overlap)) best = { ...s, overlap };
       }
 
-      const usage = { inputTokens: Math.ceil(user.length / 4), outputTokens: 0 };
-      if (!best) return { json: { answerable: false, answer: '', citations: [] }, usage };
+      let json: { answerable: boolean; answer: string; citations: number[] };
+      if (!best) {
+        json = { answerable: false, answer: '', citations: [] };
+      } else {
+        const firstSentence = (best.text.split(/(?<=[.!?])\s/)[0] ?? best.text).slice(0, 300);
+        json = { answerable: true, answer: `${firstSentence} [${best.n}]`, citations: [best.n] };
+      }
 
-      const firstSentence = (best.text.split(/(?<=[.!?])\s/)[0] ?? best.text).slice(0, 300);
-      const answer = `${firstSentence} [${best.n}]`;
-      return {
-        json: { answerable: true, answer, citations: [best.n] },
-        usage: { ...usage, outputTokens: Math.ceil(answer.length / 4) },
-      };
+      const text = JSON.stringify(json);
+      if (onToken) {
+        for (let i = 0; i < text.length; i += 6) {
+          if (signal?.aborted) throw new AppError(499, 'CLIENT_CLOSED_REQUEST', 'The request was cancelled');
+          if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+          onToken(text.slice(i, i + 6));
+        }
+      }
+      return { json, usage: { inputTokens: Math.ceil(user.length / 4), outputTokens: Math.ceil(text.length / 4) } };
     },
   };
 }

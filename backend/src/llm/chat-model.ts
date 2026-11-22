@@ -20,6 +20,16 @@ export interface JsonCompletionRequest {
   maxOutputTokens: number;
 }
 
+export interface CompletionOptions {
+  /**
+   * Streaming: called with each raw piece of the reply (partial JSON) as it is generated.
+   * The full reply is still returned at the end, parsed, exactly as without streaming.
+   */
+  onToken?: (chunk: string) => void;
+  /** Abort the provider request, e.g. when the user closes the tab. Stops paying for tokens. */
+  signal?: AbortSignal;
+}
+
 export interface JsonCompletion {
   /** Parsed JSON. Still `unknown`: callers must validate it (the model is not trusted). */
   json: unknown;
@@ -29,5 +39,5 @@ export interface JsonCompletion {
 export interface ChatModel {
   provider: 'openai' | 'anthropic' | 'ollama' | 'fake';
   model: string;
-  completeJson(request: JsonCompletionRequest): Promise<JsonCompletion>;
+  completeJson(request: JsonCompletionRequest, options?: CompletionOptions): Promise<JsonCompletion>;
 }

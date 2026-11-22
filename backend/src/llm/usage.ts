@@ -28,6 +28,9 @@ export interface LlmCall {
   latencyMs: number;
   /** How many items were sent in this call (e.g. texts in an embedding batch). */
   items?: number;
+  /** Streaming calls: time until the first piece of text arrived (what users perceive). */
+  streamed?: boolean;
+  timeToFirstTokenMs?: number;
 }
 
 /**
@@ -45,6 +48,7 @@ export function logLlmCall(log: FastifyBaseLogger, call: LlmCall): void {
         ...call,
         outputTokens,
         latencyMs: Math.round(call.latencyMs),
+        ...(call.timeToFirstTokenMs !== undefined && { timeToFirstTokenMs: Math.round(call.timeToFirstTokenMs) }),
         costUsd: estimateCostUsd(call.model, call.inputTokens, outputTokens),
       },
     },
