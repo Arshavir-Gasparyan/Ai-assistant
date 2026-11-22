@@ -28,6 +28,11 @@ export const envSchema = z.object({
     ),
   // Maximum upload size. Larger files are rejected with 413 before they're fully read.
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024), // 10 MB
+  // Embeddings (Milestone 6). 'fake' = offline word-hashing vectors for tests/demos without a key.
+  EMBEDDING_PROVIDER: z.enum(['openai', 'fake']).default('openai'),
+  // Optional at boot: without it the API still runs, but ingestion returns 503.
+  // An empty value ("OPENAI_API_KEY=" in .env) counts as not set.
+  OPENAI_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(20).optional()),
   // Required, no defaults: the app can't do anything useful without them, so fail at boot.
   // Locally: localhost:5433 (see .env.example). In Docker: the service name, e.g. postgres:5432.
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),

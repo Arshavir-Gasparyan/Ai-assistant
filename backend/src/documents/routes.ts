@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { Db } from '../db/pool.js';
+import type { Embedder } from '../embeddings/embedder.js';
 import { AppError } from '../errors.js';
 import { ingestDocument } from '../ingestion/ingest.js';
 import * as repo from './repository.js';
@@ -14,6 +15,7 @@ const documentSchema = z.object({
   pageCount: z.number().nullable(),
   chunkCount: z.number(),
   status: z.enum(['processing', 'ready', 'failed']),
+  embeddingModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -31,10 +33,14 @@ const idParams = z.object({ id: z.uuid() });
 
 const notFound = () => new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document not found');
 
-export const documentRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) => {
+export const documentRoutes: FastifyPluginAsyncZod<{ db: Db; embedder: Embedder }> = async (
+  app,
+  { db, embedder },
+) => {
   /**
    * POST /documents (multipart/form-data, field "file")
    *   201 created | 200 replaced or unchanged | 413 too large | 415 wrong type | 422 no text
+   *   502 embedding provider failed | 503 embeddings not configured
    */
   app.post(
     '/documents',
@@ -59,7 +65,7 @@ export const documentRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { d
       const data = await file.toBuffer();
       if (data.length === 0) throw new AppError(400, 'EMPTY_FILE', 'The uploaded file is empty');
 
-      const result = await ingestDocument(db, request.log, { filename: file.filename, data });
+      const result = await ingestDocument(db, embedder, request.log, { filename: file.filename, data });
       if (result.outcome === 'created') {
         return reply.status(201).send({ outcome: 'created', document: result.document });
       }

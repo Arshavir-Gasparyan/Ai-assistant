@@ -3,6 +3,7 @@ import { basename } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Db } from '../db/pool.js';
 import { withTransaction } from '../db/transaction.js';
+import { embeddingInput, type Embedder } from '../embeddings/embedder.js';
 import * as repo from '../documents/repository.js';
 import type { DocumentDto } from '../documents/repository.js';
 import { AppError } from '../errors.js';
@@ -36,11 +37,12 @@ export function sanitizeFilename(raw: string): string {
  * The ingestion pipeline:
  *
  *   validate type → hash → unchanged? stop
- *                        → extract text → chunk → [transaction: upsert document,
- *                                                  delete old chunks, insert new chunks]
+ *                        → extract text → chunk → EMBED → [transaction: upsert document,
+ *                                                          delete old chunks, insert new chunks]
  *
  * IDEMPOTENT: uploading the same file twice gives the same end state as uploading it once.
- *  - same filename + same bytes → 'unchanged', nothing is rewritten
+ *  - same filename + same bytes + same embedding model → 'unchanged', nothing is rewritten
+ *    (a different model means the stored vectors are incompatible, so we re-embed)
  *  - same filename + new bytes  → 'replaced': old chunks deleted, new ones inserted
  *  - new filename               → 'created'
  * The transaction means readers never see a half-replaced document (old chunks gone,
@@ -48,6 +50,7 @@ export function sanitizeFilename(raw: string): string {
  */
 export async function ingestDocument(
   db: Db,
+  embedder: Embedder,
   log: FastifyBaseLogger,
   input: { filename: string; data: Buffer },
   options: ChunkOptions = DEFAULT_CHUNK_OPTIONS,
@@ -62,7 +65,12 @@ export async function ingestDocument(
 
   const contentHash = createHash('sha256').update(input.data).digest('hex');
   const existing = await repo.findDocumentByFilename(db, filename);
-  if (existing && existing.contentHash === contentHash && existing.status === 'ready') {
+  if (
+    existing &&
+    existing.contentHash === contentHash &&
+    existing.embeddingModel === embedder.model &&
+    existing.status === 'ready'
+  ) {
     return { outcome: 'unchanged', document: existing };
   }
 
@@ -72,6 +80,10 @@ export async function ingestDocument(
     throw new AppError(422, 'EMPTY_DOCUMENT', 'The document contains no text');
   }
 
+  // Embed BEFORE opening the transaction. API calls are slow (hundreds of ms per batch),
+  // and holding a transaction open that long would lock rows and tie up a pooled connection.
+  const embeddings = await embedder.embed(chunks.map(embeddingInput));
+
   const document = await withTransaction(db, async (tx) => {
     const doc = await repo.upsertDocument(tx, {
       filename,
@@ -80,9 +92,10 @@ export async function ingestDocument(
       contentHash,
       pageCount,
       chunkCount: chunks.length,
+      embeddingModel: embedder.model,
     });
     await repo.deleteChunks(tx, doc.id);
-    await repo.insertChunks(tx, doc.id, chunks);
+    await repo.insertChunks(tx, doc.id, chunks, embeddings);
     return doc;
   });
 

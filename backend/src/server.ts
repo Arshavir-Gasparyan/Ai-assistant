@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { loadEnv, type Env } from './config/env.js';
 import { createPool } from './db/pool.js';
+import { createEmbedder } from './embeddings/index.js';
 import { createLogger } from './logger.js';
 import { createRedis } from './redis/client.js';
 
@@ -16,8 +17,9 @@ try {
 const log = createLogger(env);
 const db = createPool(env.DATABASE_URL, log);
 const redis = createRedis(env.REDIS_URL, log);
+const embedder = createEmbedder(env, log);
 
-const app = buildApp(env, { log, db, redis });
+const app = buildApp(env, { log, db, redis, embedder });
 
 // Graceful shutdown: `docker stop` sends SIGTERM. Stop accepting new requests, let
 // in-flight ones finish (important later for streaming chat), then close connections.

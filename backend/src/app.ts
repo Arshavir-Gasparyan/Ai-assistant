@@ -9,6 +9,7 @@ import {
 import type { Env } from './config/env.js';
 import type { Db } from './db/pool.js';
 import { documentRoutes } from './documents/routes.js';
+import type { Embedder } from './embeddings/embedder.js';
 import { registerErrorHandlers } from './plugins/error-handler.js';
 import type { Redis } from './redis/client.js';
 import { healthRoutes } from './routes/health.js';
@@ -21,6 +22,7 @@ export interface AppDeps {
   log: FastifyBaseLogger;
   db: Db;
   redis: Redis;
+  embedder: Embedder;
 }
 
 /**
@@ -62,7 +64,7 @@ export function buildApp(env: Env, deps: AppDeps) {
       redis: () => deps.redis.ping(),
     },
   });
-  app.register(documentRoutes, { db: deps.db });
+  app.register(documentRoutes, { db: deps.db, embedder: deps.embedder });
 
   return app;
 }

@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { toPgVector } from '../embeddings/embedder.js';
 import type { Chunk } from '../ingestion/chunker.js';
 import type { FileKind } from '../ingestion/extract.js';
 
@@ -21,6 +22,7 @@ export interface DocumentDto {
   pageCount: number | null;
   chunkCount: number;
   status: 'processing' | 'ready' | 'failed';
+  embeddingModel: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +45,7 @@ interface DocumentRow {
   page_count: number | null;
   chunk_count: number;
   status: DocumentDto['status'];
+  embedding_model: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -56,6 +59,7 @@ const toDocumentDto = (r: DocumentRow): DocumentDto => ({
   pageCount: r.page_count,
   chunkCount: r.chunk_count,
   status: r.status,
+  embeddingModel: r.embedding_model,
   createdAt: r.created_at.toISOString(),
   updatedAt: r.updated_at.toISOString(),
 });
@@ -111,6 +115,7 @@ export interface UpsertDocumentInput {
   contentHash: string;
   pageCount: number | null;
   chunkCount: number;
+  embeddingModel: string;
 }
 
 /**
@@ -120,18 +125,19 @@ export interface UpsertDocumentInput {
  */
 export async function upsertDocument(db: Queryable, d: UpsertDocumentInput): Promise<DocumentDto> {
   const { rows } = await db.query<DocumentRow>(
-    `INSERT INTO documents (filename, kind, size_bytes, content_hash, page_count, chunk_count, status)
-     VALUES ($1, $2, $3, $4, $5, $6, 'ready')
+    `INSERT INTO documents (filename, kind, size_bytes, content_hash, page_count, chunk_count, embedding_model, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'ready')
      ON CONFLICT (filename) DO UPDATE SET
        kind = EXCLUDED.kind,
        size_bytes = EXCLUDED.size_bytes,
        content_hash = EXCLUDED.content_hash,
        page_count = EXCLUDED.page_count,
        chunk_count = EXCLUDED.chunk_count,
+       embedding_model = EXCLUDED.embedding_model,
        status = 'ready',
        updated_at = now()
      RETURNING *`,
-    [d.filename, d.kind, d.sizeBytes, d.contentHash, d.pageCount, d.chunkCount],
+    [d.filename, d.kind, d.sizeBytes, d.contentHash, d.pageCount, d.chunkCount, d.embeddingModel],
   );
   return toDocumentDto(rows[0]!);
 }
@@ -144,12 +150,23 @@ export async function deleteChunks(db: Queryable, documentId: string): Promise<v
  * Insert all chunks in ONE query. Instead of 200 INSERTs (200 round trips), we send one
  * array per column and let Postgres `unnest` them back into rows. It also sidesteps the
  * 65,535-parameter limit you'd hit with a giant multi-row VALUES list.
+ *
+ * Embeddings travel as text ('[0.01,-0.2,...]') and are cast to vector(1536) by Postgres,
+ * which also rejects any vector with the wrong number of dimensions.
  */
-export async function insertChunks(db: Queryable, documentId: string, chunks: Chunk[]): Promise<void> {
+export async function insertChunks(
+  db: Queryable,
+  documentId: string,
+  chunks: Chunk[],
+  embeddings: number[][],
+): Promise<void> {
   if (chunks.length === 0) return;
+  if (embeddings.length !== chunks.length) throw new Error('Expected one embedding per chunk');
   await db.query(
-    `INSERT INTO chunks (document_id, chunk_index, content, page_number, heading, token_estimate)
-     SELECT $1, * FROM unnest($2::int[], $3::text[], $4::int[], $5::text[], $6::int[])`,
+    `INSERT INTO chunks (document_id, chunk_index, content, page_number, heading, token_estimate, embedding)
+     SELECT $1, idx, content, page, heading, tokens, emb::vector
+       FROM unnest($2::int[], $3::text[], $4::int[], $5::text[], $6::int[], $7::text[])
+         AS u(idx, content, page, heading, tokens, emb)`,
     [
       documentId,
       chunks.map((c) => c.chunkIndex),
@@ -157,6 +174,7 @@ export async function insertChunks(db: Queryable, documentId: string, chunks: Ch
       chunks.map((c) => c.pageNumber),
       chunks.map((c) => c.heading),
       chunks.map((c) => c.tokenEstimate),
+      embeddings.map(toPgVector),
     ],
   );
 }

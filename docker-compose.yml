@@ -72,6 +72,10 @@ services:
       API_PORT: 4000
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
+      # Embeddings (Milestone 6). Empty key = API runs, ingestion returns 503.
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
       - "127.0.0.1:${API_PORT:-4000}:4000"
     depends_on:
