@@ -1,6 +1,10 @@
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../../src/app.js';
+import { toPgVector } from '../../src/embeddings/embedder.js';
+import { createFakeEmbedder } from '../../src/embeddings/fake-embedder.js';
+import { createEmbedder } from '../../src/embeddings/index.js';
+import { ingestDocument } from '../../src/ingestion/ingest.js';
 import { makePdf } from '../fixtures/make-pdf.js';
 import { fakeDeps, testEnv } from '../helpers.js';
 import { testDatabaseUrl } from './test-db.js';
@@ -151,6 +155,49 @@ describe('documents API (real PostgreSQL)', () => {
       expect(rows[0].n).toBe(0);
       const again = await app.inject({ method: 'DELETE', url: `/documents/${document.id}` });
       expect(again.statusCode).toBe(404);
+    });
+  });
+  describe('embeddings (Milestone 6)', () => {
+    it('stores one 1536-dimensional vector per chunk and records the model', async () => {
+      const { document } = (await upload('handbook.md', HANDBOOK_V1)).json();
+      expect(document.embeddingModel).toBe('fake-hashing-v1');
+      const { rows } = await db.query('SELECT vector_dims(embedding) AS dims FROM chunks');
+      expect(rows.map((r) => r.dims)).toEqual([1536, 1536]);
+    });
+
+    it('re-embeds an unchanged file when the embedding model changes', async () => {
+      const log = fakeDeps().log;
+      const data = Buffer.from(HANDBOOK_V1);
+      await ingestDocument(db, createFakeEmbedder('fake-hashing-v1'), log, { filename: 'h.md', data });
+      const same = await ingestDocument(db, createFakeEmbedder('fake-hashing-v1'), log, { filename: 'h.md', data });
+      const newModel = await ingestDocument(db, createFakeEmbedder('fake-hashing-v2'), log, { filename: 'h.md', data });
+      expect(same.outcome).toBe('unchanged');
+      expect(newModel.outcome).toBe('replaced');
+      expect(newModel.document.embeddingModel).toBe('fake-hashing-v2');
+    });
+
+    it('finds the nearest chunk to a question with pgvector (<=> cosine distance)', async () => {
+      await upload('handbook.md', HANDBOOK_V1);
+      const [question] = await createFakeEmbedder().embed(["Do I need a doctor's note when sick?"]);
+      const { rows } = await db.query(
+        `SELECT heading, 1 - (embedding <=> $1::vector) AS similarity
+           FROM chunks ORDER BY embedding <=> $1::vector LIMIT 2`,
+        [toPgVector(question!)],
+      );
+      expect(rows[0].heading).toBe('Leave > Sick leave');
+      expect(rows[0].similarity).toBeGreaterThan(rows[1].similarity);
+    });
+
+    it('returns 503 and stores nothing when embeddings are not configured', async () => {
+      const deps = fakeDeps();
+      const noKey = createEmbedder({ EMBEDDING_PROVIDER: 'openai', OPENAI_API_KEY: undefined }, deps.log);
+      const appWithoutKey = buildApp(testEnv(), { ...deps, db, embedder: noKey });
+      const res = await appWithoutKey.inject({ method: 'POST', url: '/documents', ...multipart('a.md', '# A\ntext') });
+      await appWithoutKey.close();
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error.code).toBe('EMBEDDINGS_NOT_CONFIGURED');
+      const { rows } = await db.query('SELECT count(*)::int AS n FROM documents');
+      expect(rows[0].n).toBe(0);
     });
   });
 });
