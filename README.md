@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 8 — RAG chat with citations.** `POST /chat` retrieves chunks with hybrid search, asks the LLM for a structured answer with `[n]` citations, verifies them, and refuses when the documents don't contain the answer. (The Dashboard upload UI from Milestone 5 is still to do.)
+> Status: **Milestone 8 — RAG chat with citations.** `POST /chat` retrieves chunks with hybrid search, asks the LLM for a structured answer with `[n]` citations, verifies them, and refuses when the documents don't contain the answer. The web UI has a Dashboard (upload, documents, chunk viewer) and a Search page.
 
 ## What it will do
 
@@ -143,9 +143,9 @@ npm run test:integration    # against real Postgres (needs: docker compose up -d
 2. ✅ Backend foundation (Fastify)
 3. ✅ Frontend foundation (Next.js)
 4. ✅ Docker Compose, PostgreSQL, Redis
-5. ✅ Document ingestion and chunking (API; UI pending)
+5. ✅ Document ingestion and chunking (API + Dashboard UI)
 6. ✅ Embeddings and vector storage
-7. ✅ Hybrid search (vector + keyword, RRF)
+7. ✅ Hybrid search (vector + keyword, RRF) + Search UI
 8. ✅ RAG chat and citations
 9. Streaming responses
 10. Redis conversation memory and token budgets
