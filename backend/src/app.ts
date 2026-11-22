@@ -13,6 +13,7 @@ import type { Embedder } from './embeddings/embedder.js';
 import { registerErrorHandlers } from './plugins/error-handler.js';
 import type { Redis } from './redis/client.js';
 import { healthRoutes } from './routes/health.js';
+import { searchRoutes } from './search/routes.js';
 
 /**
  * External resources the app needs, created OUTSIDE and passed in (dependency injection).
@@ -65,6 +66,7 @@ export function buildApp(env: Env, deps: AppDeps) {
     },
   });
   app.register(documentRoutes, { db: deps.db, embedder: deps.embedder });
+  app.register(searchRoutes, { db: deps.db, embedder: deps.embedder, log: deps.log });
 
   return app;
 }
