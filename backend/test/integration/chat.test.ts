@@ -104,8 +104,10 @@ describe('POST /chat (real PostgreSQL)', () => {
       const done = events.at(-1)!.data;
       expect(deltas.map((d) => d.data.text).join('')).toBe(done.answer);
 
+      // Same answer as POST /chat. Only the conversationId differs (each call starts a new conversation).
       const nonStreamed = (await ask({ question })).json();
-      expect(done).toEqual(nonStreamed);
+      expect({ ...done, conversationId: 'x' }).toEqual({ ...nonStreamed, conversationId: 'x' });
+      expect(events[0]!.data.conversationId).toBe(done.conversationId);
     });
 
     it('a refusal streams meta + done, without deltas', async () => {
