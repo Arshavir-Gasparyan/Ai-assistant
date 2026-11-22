@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 8 — RAG chat with citations.** `POST /chat` retrieves chunks with hybrid search, asks the LLM for a structured answer with `[n]` citations, verifies them, and refuses when the documents don't contain the answer. The web UI has a Dashboard (upload, documents, chunk viewer) and a Search page.
+> Status: **Milestone 9 — streaming.** The Assistant page streams answers over Server-Sent Events (`POST /chat/stream`) with clickable citations. Also in the web UI: a Dashboard (upload, documents, chunk viewer) and a Search page.
 
 ## What it will do
 
@@ -122,6 +122,13 @@ Needs `OPENAI_API_KEY` (chat model: `CHAT_MODEL`, default `gpt-4.1-mini`). To tr
 `EMBEDDING_PROVIDER=fake CHAT_PROVIDER=fake docker compose up -d api`. The fake model copies a
 sentence from the best source, so it shows the wiring but not real answers.
 
+Streaming version (what the Assistant page uses). `-N` turns off curl's buffering:
+
+```bash
+curl -N localhost:4000/chat/stream -H 'content-type: application/json' \
+  -d '{"question":"How many vacation days can I carry over?"}'
+```
+
 ### Tests
 
 ```bash
@@ -147,7 +154,7 @@ npm run test:integration    # against real Postgres (needs: docker compose up -d
 6. ✅ Embeddings and vector storage
 7. ✅ Hybrid search (vector + keyword, RRF) + Search UI
 8. ✅ RAG chat and citations
-9. Streaming responses
+9. ✅ Streaming responses (SSE) + Assistant chat UI
 10. Redis conversation memory and token budgets
 11. LangChain vs. handwritten RAG
 12. LangGraph workflow and human-in-the-loop

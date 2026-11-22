@@ -61,4 +61,5 @@ Startup order: `postgres` healthy → `migrate` exits 0 → `api` starts (also w
    (`rag-answer@v1`, sources as numbered, escaped `<source>` blocks) → LLM with JSON-schema output
    `{answerable, answer, citations}` → validate → keep only citations that match real sources → refuse if
    none. Implemented in `backend/src/rag/`, `backend/src/prompts/`, `backend/src/llm/`.
-   Next: streaming (M9) and memory (M10).
+   Streaming (M9): `POST /chat/stream` sends `meta` → `delta`… → `done` as Server-Sent Events.
+   The JSON answer is parsed incrementally; `done` carries the verified answer (ADR-0009). Next: memory (M10).

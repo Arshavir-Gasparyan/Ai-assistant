@@ -196,3 +196,39 @@ curl -s localhost:4000/chat -H 'content-type: application/json' \
 | LLM provider failed (after retries) | 502 | `CHAT_FAILED` |
 | LLM reply cut off, refused by the provider, or not matching the schema | 502 | `CHAT_INVALID_RESPONSE` |
 | No `OPENAI_API_KEY` | 503 | `CHAT_NOT_CONFIGURED` |
+
+### `POST /chat/stream`: the same answer, streamed as Server-Sent Events
+
+Same request body as `POST /chat`. The response is `text/event-stream`:
+
+```
+event: meta
+data: {"model":"gpt-4.1-mini","promptVersion":"rag-answer@v1","retrieval":{"modeUsed":"hybrid","sources":5},"warnings":[]}
+
+event: delta
+data: {"text":"You can carry over up to 5"}
+
+event: delta
+data: {"text":" unused vacation days [1]."}
+
+event: done
+data: { …exactly the POST /chat response body… }
+```
+
+| Event | When | Data |
+|---|---|---|
+| `meta` | Once, after retrieval | model, promptVersion, retrieval, warnings |
+| `delta` | Many times while the model writes | `{ text }`, the next piece of the answer |
+| `done` | Once, at the end | The full `POST /chat` body. **Authoritative**: replace the streamed text with `done.answer` (invalid citations removed, grounding checked) |
+| `error` | Instead of `done` | `{ code, message }`, e.g. `CHAT_FAILED`, `CHAT_NOT_CONFIGURED` |
+
+- Refusals send `meta` then `done` (no `delta`).
+- Validation errors are normal `400` JSON responses (sent before the stream starts).
+- Lines starting with `:` are heartbeats (every 15 s). Ignore them.
+- Closing the connection cancels generation on the server.
+- Browsers: use `fetch` and read `response.body` (`EventSource` can't POST). See `frontend/src/lib/sse.ts`.
+
+```bash
+curl -N localhost:4000/chat/stream -H 'content-type: application/json' \
+  -d '{"question":"How many vacation days can I carry over?"}'
+```

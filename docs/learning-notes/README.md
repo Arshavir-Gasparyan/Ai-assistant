@@ -25,3 +25,14 @@ Suggested format per note:
   computed (`result.key !== currentKey`) instead of a `setState` inside `useEffect`
   (the `react-hooks/set-state-in-effect` lint rule).
 - **AbortController** cancels the previous request when the query or the selected document changes.
+
+## Streaming (Milestone 9)
+
+- **TTFT (time to first token)** is the latency users feel. Streaming doesn't make the answer faster,
+  it makes it *start* sooner. It's logged as `timeToFirstTokenMs` on every streamed LLM call.
+- **SSE** = a normal HTTP response that stays open, with `event:`/`data:` blocks separated by blank lines.
+- **Streaming structured output:** the model streams JSON, so we parse the `answer` field incrementally.
+  Anything verified (citations, grounding) can only be checked at the end, so `delta` is a preview
+  and `done` is the truth.
+- **Cancellation:** closing the tab → the server sees the closed socket → `AbortController` →
+  the provider request is cancelled → no more tokens billed.
