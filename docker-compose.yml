@@ -73,9 +73,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
-      # Embeddings (Milestone 6). Empty key = API runs, ingestion returns 503.
+      # Embeddings (Milestone 6). Empty key = API runs, ingestion returns 503 (search falls back to keyword).
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Chat (Milestone 8). Same key. Empty key = /chat returns 503.
+      CHAT_PROVIDER: ${CHAT_PROVIDER:-openai}
+      CHAT_MODEL: ${CHAT_MODEL:-gpt-4.1-mini}
     ports:
       - "127.0.0.1:${API_PORT:-4000}:4000"
     depends_on:

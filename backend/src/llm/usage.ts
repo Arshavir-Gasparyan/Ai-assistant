@@ -2,12 +2,15 @@ import type { FastifyBaseLogger } from 'fastify';
 
 /**
  * USD per 1 million tokens. Check provider pricing pages when adding a model:
- * https://developers.openai.com/api/docs/models/text-embedding-3-small
- * Chat models are added in Milestone 8.
+ * https://developers.openai.com/api/docs/pricing
+ * Chat prices checked 2026-11-22. Sources disagreed for gpt-4.1-mini, so verify before
+ * relying on cost reports. Output tokens cost several times more than input tokens.
  */
 const PRICING_PER_MILLION: Record<string, { input: number; output: number }> = {
   'text-embedding-3-small': { input: 0.02, output: 0 },
   'text-embedding-3-large': { input: 0.13, output: 0 },
+  'gpt-4.1-mini': { input: 0.4, output: 1.6 },
+  'gpt-5-mini': { input: 0.25, output: 2.0 },
 };
 
 export function estimateCostUsd(model: string, inputTokens: number, outputTokens = 0): number | null {

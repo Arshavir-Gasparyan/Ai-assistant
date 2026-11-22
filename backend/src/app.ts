@@ -10,7 +10,9 @@ import type { Env } from './config/env.js';
 import type { Db } from './db/pool.js';
 import { documentRoutes } from './documents/routes.js';
 import type { Embedder } from './embeddings/embedder.js';
+import type { ChatModel } from './llm/chat-model.js';
 import { registerErrorHandlers } from './plugins/error-handler.js';
+import { chatRoutes } from './rag/routes.js';
 import type { Redis } from './redis/client.js';
 import { healthRoutes } from './routes/health.js';
 import { searchRoutes } from './search/routes.js';
@@ -24,6 +26,7 @@ export interface AppDeps {
   db: Db;
   redis: Redis;
   embedder: Embedder;
+  chatModel: ChatModel;
 }
 
 /**
@@ -67,6 +70,7 @@ export function buildApp(env: Env, deps: AppDeps) {
   });
   app.register(documentRoutes, { db: deps.db, embedder: deps.embedder });
   app.register(searchRoutes, { db: deps.db, embedder: deps.embedder, log: deps.log });
+  app.register(chatRoutes, { db: deps.db, embedder: deps.embedder, chatModel: deps.chatModel });
 
   return app;
 }
