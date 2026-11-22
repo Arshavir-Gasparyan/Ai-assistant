@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 5 — document ingestion (in progress).** Upload PDF/Markdown via the API: text is extracted, chunked and stored. Upload UI next.
+> Status: **Milestone 6 — embeddings.** Uploaded documents are chunked, embedded with OpenAI `text-embedding-3-small` and stored in pgvector with an HNSW index. (The Dashboard upload UI from Milestone 5 is still to do.)
 
 ## What it will do
 
@@ -49,7 +49,7 @@ nvm use
 ## Setup
 
 ```bash
-cp .env.example .env                     # local defaults work out of the box
+cp .env.example .env                     # then set OPENAI_API_KEY (or EMBEDDING_PROVIDER=fake to try offline)
 cp frontend/.env.example frontend/.env.local
 ```
 
@@ -92,6 +92,15 @@ docker compose down -v                          # stop AND delete all data
 | PostgreSQL | **5433** | 5433, not 5432, to avoid clashing with a local Postgres |
 | Redis | 6379 | append-only persistence |
 
+### Explore embeddings
+
+```bash
+cd backend
+npm run embed:playground                                  # sentences → vectors → similarity
+npm run embed:search -- "How many days can I carry over?" # nearest chunks in pgvector
+EMBEDDING_PROVIDER=fake npm run embed:playground          # offline contrast: word overlap only
+```
+
 ### Tests
 
 ```bash
@@ -113,8 +122,8 @@ npm run test:integration    # against real Postgres (needs: docker compose up -d
 2. ✅ Backend foundation (Fastify)
 3. ✅ Frontend foundation (Next.js)
 4. ✅ Docker Compose, PostgreSQL, Redis
-5. Document ingestion and chunking
-6. Embeddings and vector storage
+5. ✅ Document ingestion and chunking (API; UI pending)
+6. ✅ Embeddings and vector storage
 7. Hybrid search
 8. RAG chat and citations
 9. Streaming responses

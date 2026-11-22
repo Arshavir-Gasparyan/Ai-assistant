@@ -31,7 +31,8 @@ Re-uploading the same **filename** is idempotent:
 |---|---|---|
 | New filename | 201 | `created` |
 | Same filename, different content | 200 | `replaced` (old chunks deleted, same document id) |
-| Same filename, identical content | 200 | `unchanged` (nothing rewritten) |
+| Same filename, identical content, same embedding model | 200 | `unchanged` (nothing rewritten) |
+| Same filename, identical content, **different** embedding model | 200 | `replaced` (re-embedded) |
 
 ```json
 {
@@ -45,6 +46,7 @@ Re-uploading the same **filename** is idempotent:
     "pageCount": null,
     "chunkCount": 10,
     "status": "ready",
+    "embeddingModel": "text-embedding-3-small",
     "createdAt": "2026-11-21T14:15:33.170Z",
     "updatedAt": "2026-11-21T14:15:33.170Z"
   }
@@ -60,6 +62,8 @@ Re-uploading the same **filename** is idempotent:
 | Not PDF/Markdown (checked by content, not just extension) | 415 | `UNSUPPORTED_FILE_TYPE` |
 | Corrupt/encrypted PDF | 422 | `PDF_UNREADABLE` |
 | PDF without text (scanned) | 422 | `NO_EXTRACTABLE_TEXT` |
+| Embedding provider failed (after retries) | 502 | `EMBEDDING_FAILED` |
+| No `OPENAI_API_KEY` configured | 503 | `EMBEDDINGS_NOT_CONFIGURED` |
 
 ### `GET /documents`: list documents
 

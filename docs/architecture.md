@@ -51,5 +51,7 @@ Startup order: `postgres` healthy → `migrate` exits 0 → `api` starts (also w
 
 ## Two core flows (filled in at Milestones 5 to 9)
 
-1. **Ingestion:** file → extract text → chunk → embed → store.
+1. **Ingestion:** file → detect type (by bytes) → extract text → chunk (headings/pages, then size)
+   → embed `heading + content` (OpenAI, batches of 100) → one transaction: upsert document,
+   replace chunks + vectors. Implemented in `backend/src/ingestion/` and `backend/src/embeddings/`.
 2. **Question answering:** question → retrieve (hybrid) → build prompt → LLM → stream answer + citations.
