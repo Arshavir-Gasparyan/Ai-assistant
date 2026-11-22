@@ -3,7 +3,7 @@ import { buildApp } from '../src/app.js';
 import type { ChatModel } from '../src/llm/chat-model.js';
 import { createFakeChatModel } from '../src/llm/fake-chat.js';
 import { createLogger } from '../src/logger.js';
-import { answerQuestion, REFUSAL_MESSAGE } from '../src/rag/answer.js';
+import { answerQuestion, REFUSAL_MESSAGE, type ChatStreamEvent } from '../src/rag/answer.js';
 import { resolveCitations } from '../src/rag/citations.js';
 import type { SearchResponse, SearchResult } from '../src/search/search.js';
 import { fakeDeps, testEnv } from './helpers.js';
@@ -123,6 +123,59 @@ describe('answerQuestion (RAG pipeline)', () => {
   });
 });
 
+describe('answerQuestion with streaming', () => {
+  const ask = async (question: string, sources = SOURCES) => {
+    const events: ChatStreamEvent[] = [];
+    const final = await answerQuestion(
+      { retrieve: retrieveReturning(sources), chatModel: createFakeChatModel(), log: silent },
+      question,
+      5,
+      { onEvent: (e) => events.push(e) },
+    );
+    return { events, final };
+  };
+
+  it('sends meta first, then answer deltas that add up to the final answer', async () => {
+    const { events, final } = await ask('How many unused vacation days can be carried over?');
+    expect(events[0]).toEqual({
+      type: 'meta',
+      model: 'fake-extractive-v1',
+      promptVersion: 'rag-answer@v1',
+      retrieval: { modeUsed: 'hybrid', sources: 2 },
+      warnings: [],
+    });
+    const deltas = events.slice(1);
+    expect(deltas.length).toBeGreaterThan(3); // really streamed in pieces
+    expect(deltas.every((e) => e.type === 'delta')).toBe(true);
+    expect(deltas.map((e) => (e.type === 'delta' ? e.text : '')).join('')).toBe(final.answer);
+  });
+
+  it('a refusal streams meta only: no deltas, the final answer carries the refusal', async () => {
+    const { events, final } = await ask('Who is the CEO?');
+    expect(events.map((e) => e.type)).toEqual(['meta']);
+    expect(final.refusalReason).toBe('not_in_sources');
+  });
+
+  it('no sources: meta only and no LLM call', async () => {
+    const { events, final } = await ask('anything', []);
+    expect(events.map((e) => e.type)).toEqual(['meta']);
+    expect(final.refusalReason).toBe('no_sources');
+  });
+
+  it('stops when the signal is aborted (client went away)', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      answerQuestion(
+        { retrieve: retrieveReturning(SOURCES), chatModel: createFakeChatModel(), log: silent },
+        'vacation days carried over',
+        5,
+        { onEvent: () => {}, signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ code: 'CLIENT_CLOSED_REQUEST' });
+  });
+});
+
 describe('fake chat model', () => {
   const run = (question: string) =>
     answerQuestion(
@@ -142,7 +195,7 @@ describe('fake chat model', () => {
   });
 });
 
-describe('POST /chat validation', () => {
+describe('POST /chat and /chat/stream validation', () => {
   const app = buildApp(testEnv(), fakeDeps());
   it.each([
     ['missing question', {}],
@@ -150,8 +203,10 @@ describe('POST /chat validation', () => {
     ['question over 1000 chars', { question: 'a'.repeat(1001) }],
     ['topK over 10', { question: 'q', topK: 11 }],
   ])('400 for %s', async (_name, payload) => {
-    const res = await app.inject({ method: 'POST', url: '/chat', payload });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+    for (const url of ['/chat', '/chat/stream']) {
+      const res = await app.inject({ method: 'POST', url, payload });
+      expect(res.statusCode, url).toBe(400);
+      expect(res.json().error.code).toBe('VALIDATION_ERROR');
+    }
   });
 });

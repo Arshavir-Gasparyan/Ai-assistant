@@ -72,6 +72,63 @@ describe('POST /chat (real PostgreSQL)', () => {
     await noKey.close();
   });
 
+  describe('POST /chat/stream (Server-Sent Events)', () => {
+    /** Parse an SSE body into [{event, data}] like a browser would. */
+    const parseSse = (body: string) =>
+      body
+        .split('\n\n')
+        .filter((block) => block.startsWith('event:'))
+        .map((block) => {
+          const [eventLine, dataLine] = block.split('\n');
+          return { event: eventLine!.slice('event: '.length), data: JSON.parse(dataLine!.slice('data: '.length)) };
+        });
+
+    const stream = (payload: object, target = () => app) =>
+      target().inject({ method: 'POST', url: '/chat/stream', payload, headers: { origin: 'http://localhost:3000' } });
+
+    it('streams meta, then deltas, then the final answer (same as POST /chat)', async () => {
+      const question = 'How many unused vacation days can be carried over?';
+      const res = await stream({ question });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toContain('text/event-stream');
+      // hijack() bypasses Fastify's reply pipeline: the CORS header must still be there.
+      expect(res.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+
+      const events = parseSse(res.body);
+      expect(events[0]!.event).toBe('meta');
+      expect(events.at(-1)!.event).toBe('done');
+      const deltas = events.filter((e) => e.event === 'delta');
+      expect(deltas.length).toBeGreaterThan(3);
+
+      const done = events.at(-1)!.data;
+      expect(deltas.map((d) => d.data.text).join('')).toBe(done.answer);
+
+      const nonStreamed = (await ask({ question })).json();
+      expect(done).toEqual(nonStreamed);
+    });
+
+    it('a refusal streams meta + done, without deltas', async () => {
+      const events = parseSse((await stream({ question: 'Kubernetes cluster upgrade procedure' })).body);
+      expect(events.map((e) => e.event)).toEqual(['meta', 'done']);
+      expect(events[1]!.data.answerable).toBe(false);
+    });
+
+    it('failures after the stream started arrive as an error event (status is already 200)', async () => {
+      const noChat = buildApp(testEnv(), {
+        ...deps,
+        db,
+        chatModel: createChatModel({ CHAT_PROVIDER: 'openai', CHAT_MODEL: 'gpt-4.1-mini', OPENAI_API_KEY: undefined }, deps.log),
+      });
+      const res = await stream({ question: 'How many vacation days?' }, () => noChat);
+      expect(res.statusCode).toBe(200);
+      const events = parseSse(res.body);
+      expect(events.map((e) => e.event)).toEqual(['meta', 'error']);
+      expect(events[1]!.data.code).toBe('CHAT_NOT_CONFIGURED');
+      await noChat.close();
+    });
+  });
+
   it('503 when no chat model is configured', async () => {
     const noChat = buildApp(testEnv(), {
       ...deps,

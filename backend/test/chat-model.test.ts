@@ -125,3 +125,64 @@ describe('chat pricing', () => {
     expect(estimateCostUsd('gpt-4.1-mini', 1_000_000, 1_000_000)).toBeCloseTo(0.4 + 1.6);
   });
 });
+
+describe('OpenAI chat model streaming (mocked SSE)', () => {
+  /** What OpenAI sends for stream: true: one `data: {chunk}` line per piece, then [DONE]. */
+  function sseResponse(pieces: string[], opts: { finish?: string; usage?: boolean } = {}) {
+    const chunk = (delta: object, finish: string | null = null) => ({
+      id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'gpt-4.1-mini',
+      choices: [{ index: 0, delta, finish_reason: finish }],
+    });
+    const events = [
+      chunk({ role: 'assistant', content: '' }),
+      ...pieces.map((p) => chunk({ content: p })),
+      chunk({}, opts.finish ?? 'stop'),
+      ...(opts.usage === false ? [] : [{ id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'gpt-4.1-mini', choices: [], usage: { prompt_tokens: 900, completion_tokens: 30, total_tokens: 930 } }]),
+    ];
+    const body = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('') + 'data: [DONE]\n\n';
+    return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+  }
+
+  const PIECES = ['{"answerable":tr', 'ue,"answer":"Five', ' days [1]","citations":[1]}'];
+
+  it('requests a stream with usage, forwards each piece, and returns the parsed JSON', async () => {
+    const fetch = vi.fn(async () => sseResponse(PIECES));
+    const tokens: string[] = [];
+    const result = await make(fetch as never).completeJson(REQUEST, { onToken: (t) => tokens.push(t) });
+
+    expect(tokens).toEqual(PIECES);
+    expect(result).toEqual({
+      json: { answerable: true, answer: 'Five days [1]', citations: [1] },
+      usage: { inputTokens: 900, outputTokens: 30 },
+    });
+    expect(sentBody(fetch as never)).toMatchObject({ stream: true, stream_options: { include_usage: true } });
+  });
+
+  it('logs time to first token for streamed calls', async () => {
+    const info = vi.fn();
+    const log = { ...silent, info, child: () => log } as unknown as typeof silent;
+    await make(vi.fn(async () => sseResponse(PIECES)) as never, 'gpt-4.1-mini', log).completeJson(REQUEST, { onToken: () => {} });
+    const llm = info.mock.calls.find(([, msg]) => msg === 'LLM call')![0].llm;
+    expect(llm).toMatchObject({ streamed: true, inputTokens: 900, outputTokens: 30 });
+    expect(llm.timeToFirstTokenMs).toBeTypeOf('number');
+  });
+
+  it('a stream cut off by the token limit is rejected', async () => {
+    const fetch = vi.fn(async () => sseResponse(['{"answer":"Five'], { finish: 'length' }));
+    await expect(make(fetch as never).completeJson(REQUEST, { onToken: () => {} })).rejects.toMatchObject({
+      code: 'CHAT_INVALID_RESPONSE',
+    });
+  });
+
+  it('an aborted request becomes CLIENT_CLOSED_REQUEST, not a provider error', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      init?.signal?.throwIfAborted();
+      return sseResponse(PIECES);
+    });
+    await expect(
+      make(fetch as never).completeJson(REQUEST, { onToken: () => {}, signal: controller.signal }),
+    ).rejects.toMatchObject({ code: 'CLIENT_CLOSED_REQUEST' });
+  });
+});
