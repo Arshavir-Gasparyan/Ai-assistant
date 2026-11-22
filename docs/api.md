@@ -94,3 +94,53 @@ Returns the document fields plus `chunks`:
 ### `DELETE /documents/:id`
 
 204 on success (chunks are deleted with it), 404 if not found.
+
+## Search
+
+### `POST /search`: hybrid search over chunks
+
+```bash
+curl -s localhost:4000/search -H 'content-type: application/json' \
+  -d '{"query":"How many vacation days can I carry over?","topK":3}'
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `query` | string | (required) | 1–500 characters after trimming |
+| `topK` | integer | 5 | 1–20 |
+| `mode` | `hybrid` \| `vector` \| `keyword` | `hybrid` | `vector`/`keyword` are mainly for comparing and debugging |
+
+```json
+{
+  "query": "How many vacation days can I carry over?",
+  "modeUsed": "hybrid",
+  "warnings": [],
+  "results": [
+    {
+      "chunkId": "…",
+      "documentId": "…",
+      "filename": "employee-handbook.md",
+      "heading": "Acme Robotics Employee Handbook > Leave > Vacation > Carry-over",
+      "pageNumber": null,
+      "content": "Up to 5 unused vacation days can be carried over…",
+      "score": 0.0328,
+      "ranks": { "vector": 1, "keyword": 1 },
+      "similarity": 0.61
+    }
+  ]
+}
+```
+
+- `score` is the RRF score, `Σ 1/(60 + rank)`. Use it for ordering only; it is not a confidence.
+- `ranks` shows where each search placed the chunk (`null` = not found by that search).
+- `similarity` is cosine similarity from vector search (`null` if only keyword search found it).
+- If embeddings are unavailable (no key, provider down), `hybrid` falls back to keyword search:
+  `modeUsed` is `"keyword"` and `warnings` explains why. `mode: "vector"` returns 502/503 instead.
+- Vector search only compares chunks embedded with the current model.
+- The query text is never logged.
+
+| Error | Status | `code` |
+|---|---|---|
+| Invalid body | 400 | `VALIDATION_ERROR` |
+| `mode: "vector"`, provider failed | 502 | `EMBEDDING_FAILED` |
+| `mode: "vector"`, no key | 503 | `EMBEDDINGS_NOT_CONFIGURED` |

@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 6 — embeddings.** Uploaded documents are chunked, embedded with OpenAI `text-embedding-3-small` and stored in pgvector with an HNSW index. (The Dashboard upload UI from Milestone 5 is still to do.)
+> Status: **Milestone 7 — hybrid search.** `POST /search` combines vector search (pgvector) and keyword search (Postgres full-text) with Reciprocal Rank Fusion. (The Dashboard upload UI from Milestone 5 is still to do.)
 
 ## What it will do
 
@@ -101,6 +101,16 @@ npm run embed:search -- "How many days can I carry over?" # nearest chunks in pg
 EMBEDDING_PROVIDER=fake npm run embed:playground          # offline contrast: word overlap only
 ```
 
+### Try search
+
+```bash
+curl -s localhost:4000/search -H 'content-type: application/json' \
+  -d '{"query":"How many vacation days can I carry over?","topK":3}'
+# mode: "hybrid" (default) | "vector" | "keyword"
+```
+
+Without an `OPENAI_API_KEY`, hybrid search falls back to keyword-only and returns a warning.
+
 ### Tests
 
 ```bash
@@ -124,7 +134,7 @@ npm run test:integration    # against real Postgres (needs: docker compose up -d
 4. ✅ Docker Compose, PostgreSQL, Redis
 5. ✅ Document ingestion and chunking (API; UI pending)
 6. ✅ Embeddings and vector storage
-7. Hybrid search
+7. ✅ Hybrid search (vector + keyword, RRF)
 8. RAG chat and citations
 9. Streaming responses
 10. Redis conversation memory and token budgets

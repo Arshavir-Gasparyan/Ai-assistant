@@ -54,4 +54,7 @@ Startup order: `postgres` healthy → `migrate` exits 0 → `api` starts (also w
 1. **Ingestion:** file → detect type (by bytes) → extract text → chunk (headings/pages, then size)
    → embed `heading + content` (OpenAI, batches of 100) → one transaction: upsert document,
    replace chunks + vectors. Implemented in `backend/src/ingestion/` and `backend/src/embeddings/`.
-2. **Question answering:** question → retrieve (hybrid) → build prompt → LLM → stream answer + citations.
+2. **Search (Milestone 7):** query → in parallel: embed + vector search (HNSW, same model only)
+   and keyword search (`search_tsv` GIN, OR of stemmed words) → Reciprocal Rank Fusion → top K
+   chunks with filename/heading/page for citations. Implemented in `backend/src/search/`.
+3. **Question answering:** question → retrieve (hybrid search above) → build prompt → LLM → stream answer + citations.
