@@ -64,7 +64,7 @@ function AnswerText({
   );
 }
 
-export function AssistantMessage({ message }: { message: AssistantMessageData }) {
+export function AssistantMessage({ message, question }: { message: AssistantMessageData; question: string }) {
   const [active, setActive] = useState<number | null>(null);
   const { status, answer, meta } = message;
 
@@ -83,6 +83,13 @@ export function AssistantMessage({ message }: { message: AssistantMessageData })
           {w}
         </p>
       ))}
+
+      {/* Memory at work: the follow-up was rewritten into a standalone search question. */}
+      {meta && meta.standaloneQuestion !== question && (
+        <p className="mb-2 text-xs text-zinc-500">
+          Searched for: <span className="italic">“{meta.standaloneQuestion}”</span>
+        </p>
+      )}
 
       {status === 'retrieving' && <p className="text-sm text-zinc-500">Searching your documents…</p>}
 
@@ -122,6 +129,7 @@ export function AssistantMessage({ message }: { message: AssistantMessageData })
       {meta && (
         <p className="mt-3 text-[11px] text-zinc-400">
           {meta.model} · {meta.promptVersion} · {meta.retrieval.modeUsed} search · {meta.retrieval.sources} passages
+          {answer && ` · ${answer.usage.inputTokens + answer.usage.outputTokens} tokens`}
         </p>
       )}
     </div>

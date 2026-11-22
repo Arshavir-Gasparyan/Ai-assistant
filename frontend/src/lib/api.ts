@@ -160,6 +160,10 @@ export interface ChatMeta {
   promptVersion: string;
   retrieval: { modeUsed: SearchMode; sources: number };
   warnings: string[];
+  /** Send this back with the next question to continue the conversation. */
+  conversationId: string;
+  /** The question actually searched: a follow-up rewritten using the conversation. */
+  standaloneQuestion: string;
 }
 
 export interface ChatAnswer extends ChatMeta {
@@ -167,6 +171,8 @@ export interface ChatAnswer extends ChatMeta {
   answerable: boolean;
   refusalReason: RefusalReason | null;
   citations: Citation[];
+  /** LLM tokens used by this turn (question rewrite + answer). */
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 export interface ChatStreamHandlers {
@@ -183,7 +189,7 @@ export interface ChatStreamHandlers {
  * Abort with the signal: the backend notices the closed connection and stops the LLM call.
  */
 export async function streamChat(
-  body: { question: string; topK?: number },
+  body: { question: string; topK?: number; conversationId?: string },
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -217,3 +223,6 @@ export async function streamChat(
     }
   }
 }
+
+/** Forget a conversation on the server now (instead of waiting for it to expire). */
+export const deleteConversation = (id: string) => apiFetch<void>(`/conversations/${id}`, { method: 'DELETE' });

@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, streamChat } from '@/lib/api';
+import { ApiError, deleteConversation, streamChat } from '@/lib/api';
 import { AssistantMessage, type AssistantMessageData } from './assistant-message';
 
-type Message = { id: string; role: 'user'; text: string } | ({ role: 'assistant' } & AssistantMessageData);
+type Message = { id: string; role: 'user'; text: string } | ({ role: 'assistant'; question: string } & AssistantMessageData);
 
 const EXAMPLES = [
   'How many vacation days can I carry over?',
@@ -19,6 +19,8 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  // Returned by the server with the first answer; sent back so follow-ups have context.
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +43,7 @@ export function Chat() {
     setMessages((prev) => [
       ...prev,
       { id: newId(), role: 'user', text: q },
-      { id: assistantId, role: 'assistant', status: 'retrieving', text: '' },
+      { id: assistantId, role: 'assistant', question: q, status: 'retrieving', text: '' },
     ]);
     setDraft('');
     setBusy(true);
@@ -51,9 +53,12 @@ export function Chat() {
 
     try {
       await streamChat(
-        { question: q },
+        { question: q, ...(conversationId && { conversationId }) },
         {
-          onMeta: (meta) => updateAssistant(assistantId, () => ({ meta, status: 'streaming' })),
+          onMeta: (meta) => {
+            setConversationId(meta.conversationId);
+            updateAssistant(assistantId, () => ({ meta, status: 'streaming' }));
+          },
           onDelta: (text) => updateAssistant(assistantId, (m) => ({ text: m.text + text })),
           onDone: (answer) => updateAssistant(assistantId, () => ({ answer, status: 'done' })),
         },
@@ -72,13 +77,29 @@ export function Chat() {
     }
   }
 
+  function newConversation() {
+    abortRef.current?.abort();
+    // Privacy: ask the server to forget the old conversation now, not in 24 hours.
+    if (conversationId) void deleteConversation(conversationId).catch(() => {});
+    setConversationId(null);
+    setMessages([]);
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      {messages.length > 0 && (
+        <div className="flex justify-end">
+          <button onClick={newConversation} className="text-xs text-zinc-500 hover:underline">
+            New conversation
+          </button>
+        </div>
+      )}
+
       {messages.length === 0 && (
         <div className="rounded-lg border border-dashed border-zinc-300 p-6 text-sm dark:border-zinc-700">
           <p className="mb-3 text-zinc-500">
-            Answers come only from your uploaded documents, with numbered citations. Each question is answered on
-            its own for now (conversation memory arrives in Milestone 10).
+            Answers come only from your uploaded documents, with numbered citations. Follow-up questions work: try
+            one of these, then ask “and …?”
           </p>
           <div className="flex flex-wrap gap-2">
             {EXAMPLES.map((e) => (
@@ -100,7 +121,7 @@ export function Chat() {
             {m.text}
           </div>
         ) : (
-          <AssistantMessage key={m.id} message={m} />
+          <AssistantMessage key={m.id} message={m} question={m.question} />
         ),
       )}
       <div ref={bottomRef} />
