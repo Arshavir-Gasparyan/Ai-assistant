@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 9 — streaming.** The Assistant page streams answers over Server-Sent Events (`POST /chat/stream`) with clickable citations. Also in the web UI: a Dashboard (upload, documents, chunk viewer) and a Search page.
+> Status: **Milestone 10 — conversation memory.** Follow-up questions work: conversations are stored in Redis (sliding window + summary), follow-ups are rewritten into standalone questions before search, and token budgets cap prompt size and spending. The web UI has a Dashboard, Search and a streaming Assistant.
 
 ## What it will do
 
@@ -122,6 +122,13 @@ Needs `OPENAI_API_KEY` (chat model: `CHAT_MODEL`, default `gpt-4.1-mini`). To tr
 `EMBEDDING_PROVIDER=fake CHAT_PROVIDER=fake docker compose up -d api`. The fake model copies a
 sentence from the best source, so it shows the wiring but not real answers.
 
+Follow-ups: send back the `conversationId` from the previous answer.
+
+```bash
+curl -s localhost:4000/chat -H 'content-type: application/json' \
+  -d '{"question":"and how many can I carry over?","conversationId":"<id from the first answer>"}'
+```
+
 Streaming version (what the Assistant page uses). `-N` turns off curl's buffering:
 
 ```bash
@@ -155,7 +162,7 @@ npm run test:integration    # against real Postgres (needs: docker compose up -d
 7. ✅ Hybrid search (vector + keyword, RRF) + Search UI
 8. ✅ RAG chat and citations
 9. ✅ Streaming responses (SSE) + Assistant chat UI
-10. Redis conversation memory and token budgets
+10. ✅ Redis conversation memory and token budgets
 11. LangChain vs. handwritten RAG
 12. LangGraph workflow and human-in-the-loop
 13. MCP server and Claude integration

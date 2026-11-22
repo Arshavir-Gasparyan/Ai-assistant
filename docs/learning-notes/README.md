@@ -36,3 +36,13 @@ Suggested format per note:
   and `done` is the truth.
 - **Cancellation:** closing the tab → the server sees the closed socket → `AbortController` →
   the provider request is cancelled → no more tokens billed.
+
+## Conversation memory (Milestone 10)
+
+- **LLMs are stateless.** "Memory" means re-sending earlier messages, which costs tokens every turn, so it must be bounded.
+- **Sliding window + summary:** the last few messages verbatim, older ones compressed into a summary by the LLM.
+- **Query rewriting (condensing)** matters more for RAG than putting history in the prompt: search needs
+  "How many vacation days can be carried over?", not "and how many can I carry over?".
+- **Token budgets:** a prompt budget (what fits in one request) and a spending budget (what one
+  conversation may cost). Estimate with chars/4 and measure with the provider's `usage`.
+- **Redis TTL as a retention policy:** conversation text may contain personal data, so it expires.

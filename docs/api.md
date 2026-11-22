@@ -158,6 +158,7 @@ curl -s localhost:4000/chat -H 'content-type: application/json' \
 |---|---|---|---|
 | `question` | string | (required) | 1–1000 characters after trimming |
 | `topK` | integer | 5 | Chunks given to the model, 1–10 |
+| `conversationId` | UUID | (none) | Omit to start a conversation. Send the `conversationId` from the previous answer for follow-ups |
 
 ```json
 {
@@ -178,7 +179,10 @@ curl -s localhost:4000/chat -H 'content-type: application/json' \
   "model": "gpt-4.1-mini",
   "promptVersion": "rag-answer@v1",
   "retrieval": { "modeUsed": "hybrid", "sources": 5 },
-  "warnings": []
+  "warnings": [],
+  "usage": { "inputTokens": 1450, "outputTokens": 42 },
+  "conversationId": "3489b6d5-08ad-4c92-916d-94a30b8383ac",
+  "standaloneQuestion": "How many vacation days can I carry over?"
 }
 ```
 
@@ -189,10 +193,16 @@ curl -s localhost:4000/chat -H 'content-type: application/json' \
   - `not_in_sources`: the model said the sources don't contain the answer
   - `no_valid_citations`: the model answered but cited no real source
 - Neither the question nor the answer is logged. Only the outcome, token counts and cost are.
+- **Memory:** with a `conversationId`, a follow-up is first rewritten into a standalone question using the
+  conversation (`standaloneQuestion` shows what was searched). Conversations live in Redis and expire after
+  `MEMORY_TTL_SECONDS` (24h) of inactivity. If Redis is down you still get an answer, plus a warning.
+- `usage` is the LLM tokens of this turn (rewrite + answer). Each conversation may use
+  `CONVERSATION_TOKEN_BUDGET` tokens in total.
 
 | Error | Status | `code` |
 |---|---|---|
-| Invalid body | 400 | `VALIDATION_ERROR` |
+| Invalid body (incl. a `conversationId` that isn't a UUID) | 400 | `VALIDATION_ERROR` |
+| Conversation used up its token budget | 429 | `CONVERSATION_BUDGET_EXCEEDED` |
 | LLM provider failed (after retries) | 502 | `CHAT_FAILED` |
 | LLM reply cut off, refused by the provider, or not matching the schema | 502 | `CHAT_INVALID_RESPONSE` |
 | No `OPENAI_API_KEY` | 503 | `CHAT_NOT_CONFIGURED` |
@@ -203,7 +213,7 @@ Same request body as `POST /chat`. The response is `text/event-stream`:
 
 ```
 event: meta
-data: {"model":"gpt-4.1-mini","promptVersion":"rag-answer@v1","retrieval":{"modeUsed":"hybrid","sources":5},"warnings":[]}
+data: {"model":"gpt-4.1-mini","promptVersion":"rag-answer@v1","retrieval":{"modeUsed":"hybrid","sources":5},"warnings":[],"conversationId":"…","standaloneQuestion":"…"}
 
 event: delta
 data: {"text":"You can carry over up to 5"}
@@ -217,7 +227,7 @@ data: { …exactly the POST /chat response body… }
 
 | Event | When | Data |
 |---|---|---|
-| `meta` | Once, after retrieval | model, promptVersion, retrieval, warnings |
+| `meta` | Once, after retrieval | model, promptVersion, retrieval, warnings, conversationId, standaloneQuestion |
 | `delta` | Many times while the model writes | `{ text }`, the next piece of the answer |
 | `done` | Once, at the end | The full `POST /chat` body. **Authoritative**: replace the streamed text with `done.answer` (invalid citations removed, grounding checked) |
 | `error` | Instead of `done` | `{ code, message }`, e.g. `CHAT_FAILED`, `CHAT_NOT_CONFIGURED` |
@@ -232,3 +242,10 @@ data: { …exactly the POST /chat response body… }
 curl -N localhost:4000/chat/stream -H 'content-type: application/json' \
   -d '{"question":"How many vacation days can I carry over?"}'
 ```
+
+## Conversations
+
+### `DELETE /conversations/:id`
+
+Forget a conversation immediately (instead of waiting for it to expire). 204 even if it didn't exist,
+400 if `id` isn't a UUID. The Assistant's "New conversation" button calls this.

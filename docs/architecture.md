@@ -62,4 +62,7 @@ Startup order: `postgres` healthy → `migrate` exits 0 → `api` starts (also w
    `{answerable, answer, citations}` → validate → keep only citations that match real sources → refuse if
    none. Implemented in `backend/src/rag/`, `backend/src/prompts/`, `backend/src/llm/`.
    Streaming (M9): `POST /chat/stream` sends `meta` → `delta`… → `done` as Server-Sent Events.
-   The JSON answer is parsed incrementally; `done` carries the verified answer (ADR-0009). Next: memory (M10).
+   The JSON answer is parsed incrementally; `done` carries the verified answer (ADR-0009). 
+   Memory (M10): before retrieval, a follow-up is rewritten into a standalone question using the
+   conversation from Redis (last 6 messages + summary); the turn is stored afterwards, and old
+   messages are summarized in the background. Token budgets cap sources, history and spending (ADR-0010).
