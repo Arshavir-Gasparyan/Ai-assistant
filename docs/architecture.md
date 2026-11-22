@@ -57,4 +57,8 @@ Startup order: `postgres` healthy → `migrate` exits 0 → `api` starts (also w
 2. **Search (Milestone 7):** query → in parallel: embed + vector search (HNSW, same model only)
    and keyword search (`search_tsv` GIN, OR of stemmed words) → Reciprocal Rank Fusion → top K
    chunks with filename/heading/page for citations. Implemented in `backend/src/search/`.
-3. **Question answering:** question → retrieve (hybrid search above) → build prompt → LLM → stream answer + citations.
+3. **Question answering (Milestone 8):** question → retrieve (hybrid search above) → versioned prompt
+   (`rag-answer@v1`, sources as numbered, escaped `<source>` blocks) → LLM with JSON-schema output
+   `{answerable, answer, citations}` → validate → keep only citations that match real sources → refuse if
+   none. Implemented in `backend/src/rag/`, `backend/src/prompts/`, `backend/src/llm/`.
+   Next: streaming (M9) and memory (M10).

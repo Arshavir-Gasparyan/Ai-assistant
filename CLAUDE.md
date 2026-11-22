@@ -29,7 +29,7 @@ It moves to AWS later, so avoid choices that only work on a laptop.
   PII, filenames, or raw document content.
 - Model clients sit behind interfaces (`Embedder`, ...) and are injected via `AppDeps`. Tests use fakes or a
   mocked `fetch`, never real paid APIs.
-- Prompt templates live in `prompts/` and are versioned.
+- Prompt templates live in `backend/src/prompts/` and are versioned (`rag-answer@v1`). Never edit a published version: add v2 and compare with the eval set (ADR-0008).
 - The assistant must refuse when the retrieved context does not contain the answer.
 - `/health` = liveness (never checks dependencies); `/ready` = readiness (Postgres + Redis).
 - Unit tests (`npm test`) fake dependencies; SQL behaviour is covered by integration tests (`npm run test:integration`, separate `knowledge_test` DB).

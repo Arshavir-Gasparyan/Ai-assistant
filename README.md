@@ -3,7 +3,7 @@
 A local AI assistant that answers questions about your internal documents (PDF, Markdown)
 with **grounded answers and citations**, built on Retrieval-Augmented Generation (RAG).
 
-> Status: **Milestone 7 — hybrid search.** `POST /search` combines vector search (pgvector) and keyword search (Postgres full-text) with Reciprocal Rank Fusion. (The Dashboard upload UI from Milestone 5 is still to do.)
+> Status: **Milestone 8 — RAG chat with citations.** `POST /chat` retrieves chunks with hybrid search, asks the LLM for a structured answer with `[n]` citations, verifies them, and refuses when the documents don't contain the answer. (The Dashboard upload UI from Milestone 5 is still to do.)
 
 ## What it will do
 
@@ -111,6 +111,17 @@ curl -s localhost:4000/search -H 'content-type: application/json' \
 
 Without an `OPENAI_API_KEY`, hybrid search falls back to keyword-only and returns a warning.
 
+### Ask a question
+
+```bash
+curl -s localhost:4000/chat -H 'content-type: application/json' \
+  -d '{"question":"How many vacation days can I carry over?"}'
+```
+
+Needs `OPENAI_API_KEY` (chat model: `CHAT_MODEL`, default `gpt-4.1-mini`). To try it without a key:
+`EMBEDDING_PROVIDER=fake CHAT_PROVIDER=fake docker compose up -d api`. The fake model copies a
+sentence from the best source, so it shows the wiring but not real answers.
+
 ### Tests
 
 ```bash
@@ -135,7 +146,7 @@ npm run test:integration    # against real Postgres (needs: docker compose up -d
 5. ✅ Document ingestion and chunking (API; UI pending)
 6. ✅ Embeddings and vector storage
 7. ✅ Hybrid search (vector + keyword, RRF)
-8. RAG chat and citations
+8. ✅ RAG chat and citations
 9. Streaming responses
 10. Redis conversation memory and token budgets
 11. LangChain vs. handwritten RAG

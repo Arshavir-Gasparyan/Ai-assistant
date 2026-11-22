@@ -144,3 +144,55 @@ curl -s localhost:4000/search -H 'content-type: application/json' \
 | Invalid body | 400 | `VALIDATION_ERROR` |
 | `mode: "vector"`, provider failed | 502 | `EMBEDDING_FAILED` |
 | `mode: "vector"`, no key | 503 | `EMBEDDINGS_NOT_CONFIGURED` |
+
+## Chat
+
+### `POST /chat`: answer a question from the documents, with citations
+
+```bash
+curl -s localhost:4000/chat -H 'content-type: application/json' \
+  -d '{"question":"How many vacation days can I carry over?"}'
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `question` | string | (required) | 1–1000 characters after trimming |
+| `topK` | integer | 5 | Chunks given to the model, 1–10 |
+
+```json
+{
+  "answer": "You can carry over up to 5 unused vacation days into the next year [1].",
+  "answerable": true,
+  "refusalReason": null,
+  "citations": [
+    {
+      "n": 1,
+      "chunkId": "…",
+      "documentId": "…",
+      "filename": "employee-handbook.md",
+      "heading": "Acme Robotics Employee Handbook > Leave > Vacation > Carry-over",
+      "pageNumber": null,
+      "snippet": "Up to 5 unused vacation days can be carried over…"
+    }
+  ],
+  "model": "gpt-4.1-mini",
+  "promptVersion": "rag-answer@v1",
+  "retrieval": { "modeUsed": "hybrid", "sources": 5 },
+  "warnings": []
+}
+```
+
+- `[n]` markers in `answer` match `citations[].n`. Markers pointing to non-existent sources are removed.
+- **Refusal:** `answerable: false`, a fixed `answer` ("I couldn't find the answer to that in the uploaded
+  documents."), no citations, and a `refusalReason`:
+  - `no_sources`: search found nothing (the LLM is not called)
+  - `not_in_sources`: the model said the sources don't contain the answer
+  - `no_valid_citations`: the model answered but cited no real source
+- Neither the question nor the answer is logged. Only the outcome, token counts and cost are.
+
+| Error | Status | `code` |
+|---|---|---|
+| Invalid body | 400 | `VALIDATION_ERROR` |
+| LLM provider failed (after retries) | 502 | `CHAT_FAILED` |
+| LLM reply cut off, refused by the provider, or not matching the schema | 502 | `CHAT_INVALID_RESPONSE` |
+| No `OPENAI_API_KEY` | 503 | `CHAT_NOT_CONFIGURED` |
